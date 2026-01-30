@@ -7,7 +7,7 @@ from django.utils.timezone import now as timezone_now
 
 from zerver.actions.realm_settings import do_change_realm_permission_group_setting
 from zerver.actions.users import do_change_can_create_users, do_change_user_role
-from zerver.lib.exceptions import JsonableError, StreamWildcardMentionNotAllowedError
+from zerver.lib.exceptions import JsonableError
 from zerver.lib.streams import access_stream_for_send_message
 from zerver.lib.test_classes import ZulipTestCase
 from zerver.lib.test_helpers import most_recent_message
@@ -461,24 +461,17 @@ class TestMocking(ZulipTestCase):
         )
 
         # We will try the same message a couple times.
-        # Notice the content includes "@**all**".
-        all_mention = "@**all** test wildcard mention"
+        # Notice the content includes both "@**all**" (a wildcard mention)
+        # and "@**King Hamlet**" (a regular user mention).
+        all_mention = "@**all** @**King Hamlet** test wildcard mention"
 
-        # First, let's test the SAD PATH, where cordelia
-        # tries a wildcard method and gets rejected.
-        #
-        # Here we use both mock.patch to simulate a return value
-        # and assertRaisesRegex to verify our function raises
-        # an error.
-        with (
-            mock.patch(
-                "zerver.lib.message.num_subscribers_for_stream_id",
-                return_value=Realm.WILDCARD_MENTION_THRESHOLD + 1,
-            ),
-            self.assertRaisesRegex(
-                StreamWildcardMentionNotAllowedError,
-                "You do not have permission to use channel wildcard mentions in this channel.",
-            ),
+        # First, let's test the SILENCED PATH, where cordelia
+        # tries a wildcard mention but lacks permission.
+        # The message goes through with the wildcard silenced,
+        # but the regular user mention is left intact.
+        with mock.patch(
+            "zerver.lib.message.num_subscribers_for_stream_id",
+            return_value=Realm.WILDCARD_MENTION_THRESHOLD + 1,
         ):
             self.send_stream_message(
                 sender=cordelia,
@@ -486,9 +479,10 @@ class TestMocking(ZulipTestCase):
                 content=all_mention,
             )
 
-        # Verify the message was NOT sent.
+        # Verify the message was sent but with silenced wildcard.
+        # The regular user mention "@**King Hamlet**" remains unchanged.
         message = most_recent_message(cordelia)
-        self.assertNotEqual(message.content, all_mention)
+        self.assertEqual(message.content, "@_**all** @**King Hamlet** test wildcard mention")
 
         # Now for the HAPPY PATH, we still mock the number of
         # subscribers, but here we simulate that we are under

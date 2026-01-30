@@ -2076,7 +2076,7 @@ class StreamMessagesTest(ZulipTestCase):
         self.assertTrue(user_message.flags.mentioned)
 
     def send_and_verify_topic_wildcard_mention_message(
-        self, sender_name: str, test_fails: bool = False, topic_participant_count: int = 20
+        self, sender_name: str, test_silenced: bool = False, topic_participant_count: int = 20
     ) -> None:
         sender = self.example_user(sender_name)
         content = "@**topic** test topic wildcard mention"
@@ -2084,17 +2084,15 @@ class StreamMessagesTest(ZulipTestCase):
         with mock.patch(
             "zerver.actions.message_send.participants_for_topic", return_value=participants_user_ids
         ):
-            if not test_fails:
-                msg_id = self.send_stream_message(sender, "test_stream", content)
-                result = self.api_get(sender, "/api/v1/messages/" + str(msg_id))
-                self.assert_json_success(result)
+            msg_id = self.send_stream_message(sender, "test_stream", content)
+            result = self.api_get(sender, "/api/v1/messages/" + str(msg_id))
+            self.assert_json_success(result)
 
-            else:
-                with self.assertRaisesRegex(
-                    JsonableError,
-                    "You do not have permission to use topic wildcard mentions in this topic.",
-                ):
-                    self.send_stream_message(sender, "test_stream", content)
+            if test_silenced:
+                # When the sender lacks permission, wildcards are silenced
+                # rather than the message being rejected.
+                msg = Message.objects.get(id=msg_id)
+                self.assertEqual(msg.content, "@_**topic** test topic wildcard mention")
 
     def test_topic_wildcard_mention_restrictions(self) -> None:
         cordelia = self.example_user("cordelia")
@@ -2141,7 +2139,7 @@ class StreamMessagesTest(ZulipTestCase):
             members_system_group,
             acting_user=None,
         )
-        self.send_and_verify_topic_wildcard_mention_message("polonius", test_fails=True)
+        self.send_and_verify_topic_wildcard_mention_message("polonius", test_silenced=True)
         # There is no restriction on topics with less than 'Realm.WILDCARD_MENTION_THRESHOLD' participants.
         self.send_and_verify_topic_wildcard_mention_message("polonius", topic_participant_count=10)
         self.send_and_verify_topic_wildcard_mention_message("cordelia")
@@ -2152,7 +2150,7 @@ class StreamMessagesTest(ZulipTestCase):
             moderators_system_group,
             acting_user=None,
         )
-        self.send_and_verify_topic_wildcard_mention_message("cordelia", test_fails=True)
+        self.send_and_verify_topic_wildcard_mention_message("cordelia", test_silenced=True)
         self.send_and_verify_topic_wildcard_mention_message("cordelia", topic_participant_count=10)
         self.send_and_verify_topic_wildcard_mention_message("shiva")
 
@@ -2162,7 +2160,7 @@ class StreamMessagesTest(ZulipTestCase):
             administrators_system_group,
             acting_user=None,
         )
-        self.send_and_verify_topic_wildcard_mention_message("shiva", test_fails=True)
+        self.send_and_verify_topic_wildcard_mention_message("shiva", test_silenced=True)
         # There is no restriction on topics with less than 'Realm.WILDCARD_MENTION_THRESHOLD' participants.
         self.send_and_verify_topic_wildcard_mention_message("shiva", topic_participant_count=10)
         self.send_and_verify_topic_wildcard_mention_message("iago")
@@ -2173,7 +2171,7 @@ class StreamMessagesTest(ZulipTestCase):
             nobody_system_group,
             acting_user=None,
         )
-        self.send_and_verify_topic_wildcard_mention_message("iago", test_fails=True)
+        self.send_and_verify_topic_wildcard_mention_message("iago", test_silenced=True)
         self.send_and_verify_topic_wildcard_mention_message("iago", topic_participant_count=10)
 
         # Test for checking setting for non-system user group.
@@ -2189,7 +2187,7 @@ class StreamMessagesTest(ZulipTestCase):
         self.send_and_verify_topic_wildcard_mention_message("cordelia")
 
         # Iago is not in the allowed user group.
-        self.send_and_verify_topic_wildcard_mention_message("iago", test_fails=True)
+        self.send_and_verify_topic_wildcard_mention_message("iago", test_silenced=True)
         self.send_and_verify_topic_wildcard_mention_message("iago", topic_participant_count=10)
 
         # Test for checking the setting for anonymous user group.
@@ -2209,26 +2207,24 @@ class StreamMessagesTest(ZulipTestCase):
         # Iago is in the `administrators_system_group` subgroup.
         self.send_and_verify_topic_wildcard_mention_message("iago")
         # Shiva is not in the anonymous user group.
-        self.send_and_verify_topic_wildcard_mention_message("shiva", test_fails=True)
+        self.send_and_verify_topic_wildcard_mention_message("shiva", test_silenced=True)
         self.send_and_verify_topic_wildcard_mention_message("shiva", topic_participant_count=10)
 
     def send_and_verify_stream_wildcard_mention_message(
-        self, sender_name: str, test_fails: bool = False, sub_count: int = 16
+        self, sender_name: str, test_silenced: bool = False, sub_count: int = 16
     ) -> None:
         sender = self.example_user(sender_name)
         content = "@**all** test stream wildcard mention"
         with mock.patch("zerver.lib.message.num_subscribers_for_stream_id", return_value=sub_count):
-            if not test_fails:
-                msg_id = self.send_stream_message(sender, "test_stream", content)
-                result = self.api_get(sender, "/api/v1/messages/" + str(msg_id))
-                self.assert_json_success(result)
+            msg_id = self.send_stream_message(sender, "test_stream", content)
+            result = self.api_get(sender, "/api/v1/messages/" + str(msg_id))
+            self.assert_json_success(result)
 
-            else:
-                with self.assertRaisesRegex(
-                    JsonableError,
-                    "You do not have permission to use channel wildcard mentions in this channel.",
-                ):
-                    self.send_stream_message(sender, "test_stream", content)
+            if test_silenced:
+                # When the sender lacks permission, wildcards are silenced
+                # rather than the message being rejected.
+                msg = Message.objects.get(id=msg_id)
+                self.assertEqual(msg.content, "@_**all** test stream wildcard mention")
 
     def test_stream_wildcard_mention_restrictions(self) -> None:
         cordelia = self.example_user("cordelia")
@@ -2275,7 +2271,7 @@ class StreamMessagesTest(ZulipTestCase):
             members_system_group,
             acting_user=None,
         )
-        self.send_and_verify_stream_wildcard_mention_message("polonius", test_fails=True)
+        self.send_and_verify_stream_wildcard_mention_message("polonius", test_silenced=True)
         # There is no restriction on small streams.
         self.send_and_verify_stream_wildcard_mention_message("polonius", sub_count=10)
         self.send_and_verify_stream_wildcard_mention_message("cordelia")
@@ -2286,7 +2282,7 @@ class StreamMessagesTest(ZulipTestCase):
             moderators_system_group,
             acting_user=None,
         )
-        self.send_and_verify_stream_wildcard_mention_message("cordelia", test_fails=True)
+        self.send_and_verify_stream_wildcard_mention_message("cordelia", test_silenced=True)
         self.send_and_verify_stream_wildcard_mention_message("cordelia", sub_count=10)
         self.send_and_verify_stream_wildcard_mention_message("shiva")
 
@@ -2296,7 +2292,7 @@ class StreamMessagesTest(ZulipTestCase):
             administrators_system_group,
             acting_user=None,
         )
-        self.send_and_verify_stream_wildcard_mention_message("shiva", test_fails=True)
+        self.send_and_verify_stream_wildcard_mention_message("shiva", test_silenced=True)
         # There is no restriction on small streams.
         self.send_and_verify_stream_wildcard_mention_message("shiva", sub_count=10)
         self.send_and_verify_stream_wildcard_mention_message("iago")
@@ -2307,7 +2303,7 @@ class StreamMessagesTest(ZulipTestCase):
             nobody_system_group,
             acting_user=None,
         )
-        self.send_and_verify_stream_wildcard_mention_message("iago", test_fails=True)
+        self.send_and_verify_stream_wildcard_mention_message("iago", test_silenced=True)
         self.send_and_verify_stream_wildcard_mention_message("iago", sub_count=10)
 
         # Test for checking setting for non-system user group.
@@ -2323,7 +2319,7 @@ class StreamMessagesTest(ZulipTestCase):
         self.send_and_verify_stream_wildcard_mention_message("cordelia")
 
         # Iago is not in the allowed user group.
-        self.send_and_verify_stream_wildcard_mention_message("iago", test_fails=True)
+        self.send_and_verify_stream_wildcard_mention_message("iago", test_silenced=True)
         self.send_and_verify_stream_wildcard_mention_message("iago", sub_count=10)
 
         # Test for checking the setting for anonymous user group.
@@ -2343,7 +2339,7 @@ class StreamMessagesTest(ZulipTestCase):
         # Iago is in the `administrators_system_group` subgroup.
         self.send_and_verify_stream_wildcard_mention_message("iago")
         # Shiva is not in the anonymous user group.
-        self.send_and_verify_stream_wildcard_mention_message("shiva", test_fails=True)
+        self.send_and_verify_stream_wildcard_mention_message("shiva", test_silenced=True)
         self.send_and_verify_stream_wildcard_mention_message("shiva", sub_count=10)
 
     def test_topic_wildcard_mentioned_flag(self) -> None:

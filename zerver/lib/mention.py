@@ -475,6 +475,18 @@ def silent_mention_syntax_for_user_group(user_group: NamedUserGroup) -> str:
     return f"@_*{user_group.name}*"
 
 
+def silence_wildcard_mentions_in_content(content: str) -> str:
+    def replace(m: re.Match[str]) -> str:
+        name = m.group("match")
+        if m.group("silent") != "_" and (
+            user_mention_matches_stream_wildcard(name) or user_mention_matches_topic_wildcard(name)
+        ):
+            return f"@_**{name}**"
+        return m.group(0)
+
+    return MENTIONS_RE.sub(replace, content)
+
+
 def get_user_group_mention_display_name(user_group: NamedUserGroup) -> StrPromise | str:
     if user_group.is_system_group:
         return SystemGroups.GROUP_DISPLAY_NAME_MAP[user_group.name]

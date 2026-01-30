@@ -34,14 +34,17 @@ from zerver.lib.exceptions import (
     MarkdownRenderingError,
     MessagesNotAllowedInEmptyTopicError,
     StreamDoesNotExistError,
-    StreamWildcardMentionNotAllowedError,
     StreamWithIDDoesNotExistError,
     TopicsNotAllowedError,
-    TopicWildcardMentionNotAllowedError,
 )
 from zerver.lib.markdown import MessageRenderingResult, render_message_markdown
 from zerver.lib.markdown import version as markdown_version
-from zerver.lib.mention import MentionBackend, MentionData, silent_mention_syntax_for_user
+from zerver.lib.mention import (
+    MentionBackend,
+    MentionData,
+    silence_wildcard_mentions_in_content,
+    silent_mention_syntax_for_user,
+)
 from zerver.lib.message import (
     SendMessageRequest,
     check_user_group_mention_allowed,
@@ -666,6 +669,22 @@ def build_message_send_dict(
         possible_topic_wildcard_mention=mention_data.message_has_topic_wildcards(),
         possible_stream_wildcard_mention=mention_data.message_has_stream_wildcards(),
     )
+
+    if (
+        stream is not None
+        and mention_data.message_has_stream_wildcards()
+        and not stream_wildcard_mention_allowed(message.sender, stream, realm)
+    ):
+        message.content = silence_wildcard_mentions_in_content(message.content)
+
+    if (
+        stream is not None
+        and mention_data.message_has_topic_wildcards()
+        and not topic_wildcard_mention_allowed(
+            message.sender, len(info.topic_participant_user_ids), realm
+        )
+    ):
+        message.content = silence_wildcard_mentions_in_content(message.content)
 
     # Render our message_dicts.
     assert message.rendered_content is None
@@ -1906,21 +1925,6 @@ def check_message(
         acting_user=acting_user,
         no_previews=no_previews,
     )
-
-    if (
-        stream is not None
-        and message_send_dict.rendering_result.mentions_stream_wildcard
-        and not stream_wildcard_mention_allowed(sender, stream, realm)
-    ):
-        raise StreamWildcardMentionNotAllowedError
-
-    topic_participant_count = len(message_send_dict.topic_participant_user_ids)
-    if (
-        stream is not None
-        and message_send_dict.rendering_result.mentions_topic_wildcard
-        and not topic_wildcard_mention_allowed(sender, topic_participant_count, realm)
-    ):
-        raise TopicWildcardMentionNotAllowedError
 
     if message_send_dict.rendering_result.mentions_user_group_ids:
         mentioned_group_ids = list(message_send_dict.rendering_result.mentions_user_group_ids)
