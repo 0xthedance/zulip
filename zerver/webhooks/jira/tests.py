@@ -1,7 +1,9 @@
 from unittest.mock import patch
 from urllib.parse import quote, unquote
 
+from zerver.actions.custom_profile_fields import try_add_realm_default_custom_profile_field
 from zerver.lib.test_classes import WebhookTestCase
+from zerver.models.realms import get_realm
 
 
 class JiraHookTests(WebhookTestCase):
@@ -16,7 +18,7 @@ class JiraHookTests(WebhookTestCase):
             content_type="application/json",
         )
         expected_content = """
-Leo Franchi created [BUG-15: New bug with hook](http://lfranchi.com:8080/browse/BUG-15):
+@_**Othello, the Moor of Venice|12** created [BUG-15: New bug with hook](http://lfranchi.com:8080/browse/BUG-15):
 
 * **Priority**: Major
 * **Assignee**: no one
@@ -31,7 +33,7 @@ Leo Franchi created [BUG-15: New bug with hook](http://lfranchi.com:8080/browse/
     def test_created(self) -> None:
         expected_topic_name = "BUG-15: New bug with hook"
         expected_message = """
-Leo Franchi created [BUG-15: New bug with hook](http://lfranchi.com:8080/browse/BUG-15):
+@_**Othello, the Moor of Venice|12** created [BUG-15: New bug with hook](http://lfranchi.com:8080/browse/BUG-15):
 
 * **Priority**: Major
 * **Assignee**: no one
@@ -71,7 +73,7 @@ Leo Franchi created [BUG-15: New bug with hook](http://lfranchi.com:8080/browse/
 
         expected_topic_name = "BUG-15: New bug with hook"
         expected_message = """
-Leo Franchi created [BUG-15: New bug with hook](http://lfranchi.com:8080/browse/BUG-15):
+@_**Othello, the Moor of Venice|12** created [BUG-15: New bug with hook](http://lfranchi.com:8080/browse/BUG-15):
 
 * **Priority**: Major
 * **Assignee**: no one
@@ -92,7 +94,7 @@ Leo Franchi created [BUG-15: New bug with hook](http://lfranchi.com:8080/browse/
 
         expected_topic_name = "BUG-15: New bug with hook"
         expected_message = """
-Leo Franchi created [BUG-15: New bug with hook](http://lfranchi.com:8080/browse/BUG-15):
+@_**Othello, the Moor of Venice|12** created [BUG-15: New bug with hook](http://lfranchi.com:8080/browse/BUG-15):
 
 * **Priority**: Major
 * **Assignee**: no one
@@ -105,7 +107,7 @@ Leo Franchi created [BUG-15: New bug with hook](http://lfranchi.com:8080/browse/
         self.url = self.build_webhook_url(topic=quote(quote("alerts test")))
         expected_topic_name = "alerts test"
         expected_message = """
-Leo Franchi created [BUG-15: New bug with hook](http://lfranchi.com:8080/browse/BUG-15):
+@_**Othello, the Moor of Venice|12** created [BUG-15: New bug with hook](http://lfranchi.com:8080/browse/BUG-15):
 
 * **Priority**: Major
 * **Assignee**: no one
@@ -115,7 +117,7 @@ Leo Franchi created [BUG-15: New bug with hook](http://lfranchi.com:8080/browse/
     def test_created_with_unicode(self) -> None:
         expected_topic_name = "BUG-15: New bug with à hook"
         expected_message = """
-Leo Franchià created [BUG-15: New bug with à hook](http://lfranchi.com:8080/browse/BUG-15):
+@_**Othello, the Moor of Venice|12** created [BUG-15: New bug with à hook](http://lfranchi.com:8080/browse/BUG-15):
 
 * **Priority**: Major
 * **Assignee**: no one
@@ -137,7 +139,7 @@ Leonardo Franchi [Administrator] created [TEST-4: Test Created Assignee](https:/
     def test_commented(self) -> None:
         expected_topic_name = "BUG-15: New bug with hook"
         expected_message = """
-Leo Franchi commented on [BUG-15: New bug with hook](http://lfranchi.com:8080/browse/BUG-15) (assigned to **Othello, the Moor of Venice**):
+@_**Othello, the Moor of Venice|12** commented on [BUG-15: New bug with hook](http://lfranchi.com:8080/browse/BUG-15) (assigned to @_**Othello, the Moor of Venice|12**):
 
 ``` quote
 Adding a comment. Oh, what a comment it is!
@@ -149,7 +151,7 @@ Adding a comment. Oh, what a comment it is!
     def test_commented_with_two_full_links(self) -> None:
         expected_topic_name = "BUG-15: New bug with hook"
         expected_message = """
-Leo Franchi commented on [BUG-15: New bug with hook](http://lfranchi.com:8080/browse/BUG-15) (assigned to **Othello, the Moor of Venice**):
+@_**Othello, the Moor of Venice|12** commented on [BUG-15: New bug with hook](http://lfranchi.com:8080/browse/BUG-15) (assigned to @_**Othello, the Moor of Venice|12**):
 
 ``` quote
 This is the [first link](https://google.com) and this is the [second link](https://google.com) and this is the end.
@@ -162,7 +164,7 @@ This is the [first link](https://google.com) and this is the [second link](https
     def test_comment_edited(self) -> None:
         expected_topic_name = "BUG-15: New bug with hook"
         expected_message = """
-Leo Franchi edited a comment on [BUG-15: New bug with hook](http://lfranchi.com:8080/browse/BUG-15) (assigned to **Othello, the Moor of Venice**):
+@_**Othello, the Moor of Venice|12** edited a comment on [BUG-15: New bug with hook](http://lfranchi.com:8080/browse/BUG-15) (assigned to @_**Othello, the Moor of Venice|12**):
 
 ``` quote
 Adding a comment. Oh, what a comment it is!
@@ -184,15 +186,15 @@ Adding a comment. Oh, what a comment it is!
 
     def test_deleted(self) -> None:
         expected_topic_name = "BUG-15: New bug with hook"
-        expected_message = "Leo Franchi deleted [BUG-15: New bug with hook](http://lfranchi.com:8080/browse/BUG-15)."
+        expected_message = "@_**Othello, the Moor of Venice|12** deleted [BUG-15: New bug with hook](http://lfranchi.com:8080/browse/BUG-15)."
         self.check_webhook("deleted_v1", expected_topic_name, expected_message)
         self.check_webhook("deleted_v2", expected_topic_name, expected_message)
 
     def test_reassigned(self) -> None:
         expected_topic_name = "BUG-15: New bug with hook"
-        expected_message = """Leo Franchi updated [BUG-15: New bug with hook](http://lfranchi.com:8080/browse/BUG-15) (assigned to **Othello, the Moor of Venice**):
+        expected_message = """@_**Othello, the Moor of Venice|12** updated [BUG-15: New bug with hook](http://lfranchi.com:8080/browse/BUG-15) (assigned to @_**Othello, the Moor of Venice|12**):
 
-* Changed assignee to **Othello, the Moor of Venice**"""
+* Changed assignee to @_**Othello, the Moor of Venice|12**"""
         self.check_webhook("reassigned_v1", expected_topic_name, expected_message)
         self.check_webhook("reassigned_v2", expected_topic_name, expected_message)
 
@@ -206,7 +208,7 @@ Adding a comment. Oh, what a comment it is!
 
     def test_status_changed(self) -> None:
         expected_topic_name = "TEST-1: Fix That"
-        expected_message = """Leonardo Franchi [Administrator] updated [TEST-1: Fix That](https://zulipp.atlassian.net/browse/TEST-1):
+        expected_message = """@_**Othello, the Moor of Venice|12** updated [TEST-1: Fix That](https://zulipp.atlassian.net/browse/TEST-1):
 
 * Changed status from **To Do** to **In Progress**"""
         self.check_webhook("change_status_v1", expected_topic_name, expected_message)
@@ -247,3 +249,52 @@ Adding a comment. Oh, what a comment it is!
             "Unable to parse request: Did Jira generate this event?",
             e.exception.args[0],
         )
+
+    def test_created_silent_mention_by_jira_username(self) -> None:
+        """Test that users are matched by their Jira username via external account field."""
+        realm = get_realm("zulip")
+        jira_field = try_add_realm_default_custom_profile_field(realm, "jira")
+        hamlet = self.example_user("hamlet")
+        self.set_user_custom_profile_data(hamlet, [{"id": jira_field.id, "value": "lfranchi"}])
+
+        expected_topic_name = "BUG-15: New bug with hook"
+        expected_message = f"""
+@_**{hamlet.full_name}|{hamlet.id}** created [BUG-15: New bug with hook](http://lfranchi.com:8080/browse/BUG-15):
+
+* **Priority**: Major
+* **Assignee**: no one
+""".strip()
+        self.check_webhook("created_v2", expected_topic_name, expected_message)
+
+    def test_created_silent_mention_by_email_fallback(self) -> None:
+        """Test that users are matched by email when Jira username doesn't match."""
+        # The fixture has emailAddress: "othello@zulip.com"
+        othello = self.example_user("othello")
+        expected_topic_name = "BUG-15: New bug with hook"
+        expected_message = f"""
+@_**{othello.full_name}|{othello.id}** created [BUG-15: New bug with hook](http://lfranchi.com:8080/browse/BUG-15):
+
+* **Priority**: Major
+* **Assignee**: no one
+""".strip()
+        self.check_webhook("created_v2", expected_topic_name, expected_message)
+
+    def test_created_silent_mention_with_multiple_matches(self) -> None:
+        """Test that when multiple users have the same Jira username, we fall back to email."""
+        realm = get_realm("zulip")
+        jira_field = try_add_realm_default_custom_profile_field(realm, "jira")
+        hamlet = self.example_user("hamlet")
+        self.set_user_custom_profile_data(hamlet, [{"id": jira_field.id, "value": "lfranchi"}])
+        cordelia = self.example_user("cordelia")
+        self.set_user_custom_profile_data(cordelia, [{"id": jira_field.id, "value": "lfranchi"}])
+
+        # Multiple matches for Jira username, so it falls back to email match
+        othello = self.example_user("othello")
+        expected_topic_name = "BUG-15: New bug with hook"
+        expected_message = f"""
+@_**{othello.full_name}|{othello.id}** created [BUG-15: New bug with hook](http://lfranchi.com:8080/browse/BUG-15):
+
+* **Priority**: Major
+* **Assignee**: no one
+""".strip()
+        self.check_webhook("created_v2", expected_topic_name, expected_message)

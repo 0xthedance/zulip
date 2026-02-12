@@ -87,6 +87,12 @@ DEFAULT_EXTERNAL_ACCOUNTS = {
         name=gettext_lazy("GitLab username"),
         hint="",
     ),
+    "jira": ExternalAccount(
+        text="Jira",
+        url_pattern="",
+        name=gettext_lazy("Jira username"),
+        hint="",
+    ),
     "instagram": ExternalAccount(
         text="Instagram",
         url_pattern="https://www.instagram.com/%(username)s",

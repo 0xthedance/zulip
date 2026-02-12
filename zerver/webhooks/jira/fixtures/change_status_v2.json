@@ -6,7 +6,7 @@
     "self": "https://zulipp.atlassian.net/rest/api/2/user?username=admin",
     "name": "admin",
     "key": "admin",
-    "emailAddress": "kolaszek@tlen.pl",
+    "emailAddress": "othello@zulip.com",
     "avatarUrls": {
       "48x48": "https://secure.gravatar.com/avatar/d832c4f48fb6bc323411fbbcd25079ad?d=mm&s=48",
       "24x24": "https://secure.gravatar.com/avatar/d832c4f48fb6bc323411fbbcd25079ad?d=mm&s=24",
