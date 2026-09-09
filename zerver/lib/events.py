@@ -576,6 +576,7 @@ def fetch_initial_state_data(
         )
 
         state["server_can_summarize_topics"] = settings.TOPIC_SUMMARIZATION_MODEL is not None
+        state["server_video_google_meet_app_internal"] = settings.VIDEO_GOOGLE_MEET_APP_INTERNAL
 
         for channel_field in [
             "moderation_request_channel_id",
@@ -941,8 +942,11 @@ def fetch_initial_state_data(
         state["user_topics"] = [] if user_profile is None else get_user_topics(user_profile)
 
     if want("video_calls"):
-        state["has_zoom_token"] = settings_user.third_party_api_state.get("zoom") is not None
+        state["has_google_meet_token"] = (
+            settings_user.third_party_api_state.get("google_meet") is not None
+        )
         state["has_webex_token"] = settings_user.third_party_api_state.get("webex") is not None
+        state["has_zoom_token"] = settings_user.third_party_api_state.get("zoom") is not None
 
     if want("giphy"):
         # Normally, it would be a nasty security bug to send a
@@ -1321,34 +1325,27 @@ def apply_event(
                                 subscriber_key = (
                                     "subscribers" if "subscribers" in sub else "partial_subscribers"
                                 )
-                                sub[subscriber_key] = [
-                                    user_id
-                                    for user_id in sub[subscriber_key]
-                                    if user_id != person_user_id
-                                ]
+                                # Defensive: earlier peer_remove events already drop the user.
+                                if person_user_id in sub[subscriber_key]:
+                                    sub[subscriber_key].remove(person_user_id)  # nocoverage
 
                     for user_group in state["realm_user_groups"]:
-                        user_group["members"] = [
-                            user_id
-                            for user_id in user_group["members"]
-                            if user_id != person_user_id
-                        ]
+                        if person_user_id in user_group["members"]:
+                            user_group["members"].remove(person_user_id)
 
                     for setting_name in Realm.REALM_PERMISSION_GROUP_SETTINGS:
-                        if not isinstance(state["realm_" + setting_name], int):
-                            state["realm_" + setting_name]["direct_members"] = [
-                                user_id
-                                for user_id in state["realm_" + setting_name]["direct_members"]
-                                if user_id != person_user_id
-                            ]
+                        if (
+                            not isinstance(state["realm_" + setting_name], int)
+                            and person_user_id in state["realm_" + setting_name]["direct_members"]
+                        ):
+                            state["realm_" + setting_name]["direct_members"].remove(person_user_id)
                     for group in state["realm_user_groups"]:
                         for setting_name in NamedUserGroup.GROUP_PERMISSION_SETTINGS:
-                            if not isinstance(group[setting_name], int):
-                                group[setting_name]["direct_members"] = [
-                                    user_id
-                                    for user_id in group[setting_name]["direct_members"]
-                                    if user_id != person_user_id
-                                ]
+                            if (
+                                not isinstance(group[setting_name], int)
+                                and person_user_id in group[setting_name]["direct_members"]
+                            ):
+                                group[setting_name]["direct_members"].remove(person_user_id)
         elif event["op"] == "remove":
             if person_user_id in state["raw_users"]:
                 if user_list_incomplete:
@@ -1736,6 +1733,7 @@ def apply_event(
                                 "subscribers" if "subscribers" in sub else "partial_subscribers"
                             )
                             subscribers = set(sub[subscriber_key]) | user_ids
+                            # Keep this sorted by user ID; peer_remove relies on it.
                             sub[subscriber_key] = sorted(subscribers)
         elif event["op"] == "peer_remove":
             # Note: We don't update subscriber_count here, as with peer_add.
@@ -1753,8 +1751,10 @@ def apply_event(
                             subscriber_key = (
                                 "subscribers" if "subscribers" in sub else "partial_subscribers"
                             )
-                            subscribers = set(sub[subscriber_key]) - user_ids
-                            sub[subscriber_key] = sorted(subscribers)
+                            # Subscriber lists are sorted, so filtering preserves that.
+                            sub[subscriber_key] = [
+                                uid for uid in sub[subscriber_key] if uid not in user_ids
+                            ]
         else:
             raise AssertionError("Unexpected event type {type}/{op}".format(**event))
     elif event["type"] == "presence":
@@ -2026,10 +2026,12 @@ def apply_event(
             state["channel_folders"].sort(key=lambda folder: folder["order"])
         else:
             raise AssertionError("Unexpected event type {type}/{op}".format(**event))
-    elif event["type"] == "has_zoom_token":
-        state["has_zoom_token"] = event["value"]
+    elif event["type"] == "has_google_meet_token":
+        state["has_google_meet_token"] = event["value"]
     elif event["type"] == "has_webex_token":
         state["has_webex_token"] = event["value"]
+    elif event["type"] == "has_zoom_token":
+        state["has_zoom_token"] = event["value"]
     elif event["type"] == "web_reload_client":
         # This is an unlikely race, where the queue was created with a
         # previous Tornado process, which restarted, and subsequently

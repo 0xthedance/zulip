@@ -415,6 +415,18 @@ select.settings_select {
 #personal-bot-list .user-status-settings {
     display: flex;
     justify-content: flex-end;
+    /* Matches the height of one row of action icon-buttons, so rows keep a consistent height even when no buttons are shown. */
+    min-height: 2.1875em;
+}
+
+.bot-list-table td {
+    /* Keeps row height consistent whether or not the actions column is shown for this table. */
+    height: 2.1875em;
+}
+
+.bot-list-table.hide-actions-column th.actions,
+.bot-list-table.hide-actions-column td.actions {
+    display: none;
 }
 
 .config-download-text {
@@ -669,13 +681,11 @@ input[type="checkbox"] {
 .advanced-configurations-container {
     .advance-config-toggle-area {
         cursor: pointer;
-        display: flex;
-        align-items: center;
-        gap: 0 0.625em;
-
-        .settings-subsection-title {
-            margin: 4px 0;
-        }
+        /* Unlike other subsection headers, which wrap their save/discard
+           widget below the title, this row is just a caret and a title;
+           a long translated title should wrap within the title rather
+           than dropping below the caret. */
+        flex-wrap: nowrap;
 
         .toggle-advanced-configurations-icon {
             font-size: 1.4286em; /* 20px at 14px / em */

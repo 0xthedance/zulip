@@ -168,7 +168,7 @@ class TestSCIMUser(SCIMTestCase):
         expected_response_schema = {
             "schemas": ["urn:ietf:params:scim:api:messages:2.0:ListResponse"],
             "totalResults": 1,
-            "itemsPerPage": 50,
+            "itemsPerPage": 1,
             "startIndex": 1,
             "Resources": [self.generate_user_schema(hamlet)],
         }
@@ -198,7 +198,7 @@ class TestSCIMUser(SCIMTestCase):
         expected_empty_results_response_schema = {
             "schemas": ["urn:ietf:params:scim:api:messages:2.0:ListResponse"],
             "totalResults": 0,
-            "itemsPerPage": 50,
+            "itemsPerPage": 0,
             "startIndex": 1,
             "Resources": [],
         }
@@ -218,7 +218,7 @@ class TestSCIMUser(SCIMTestCase):
         expected_response_schema = {
             "schemas": ["urn:ietf:params:scim:api:messages:2.0:ListResponse"],
             "totalResults": 1,
-            "itemsPerPage": 50,
+            "itemsPerPage": 1,
             "startIndex": 1,
             "Resources": [self.generate_user_schema(hamlet)],
         }
@@ -239,10 +239,11 @@ class TestSCIMUser(SCIMTestCase):
         self.assertEqual(result_all.status_code, 200)
         output_data_all = orjson.loads(result_all.content)
 
+        count = UserProfile.objects.filter(realm=realm, is_bot=False).count()
         expected_response_schema = {
             "schemas": ["urn:ietf:params:scim:api:messages:2.0:ListResponse"],
-            "totalResults": UserProfile.objects.filter(realm=realm, is_bot=False).count(),
-            "itemsPerPage": 50,
+            "totalResults": count,
+            "itemsPerPage": count,
             "startIndex": 1,
             "Resources": [
                 self.generate_user_schema(user_profile)
@@ -323,10 +324,11 @@ class TestSCIMUser(SCIMTestCase):
         user_query = UserProfile.objects.filter(
             realm=realm, is_bot=False, delivery_email__endswith="@zulip.com"
         )
+        count = user_query.count()
         expected_response_schema = {
             "schemas": ["urn:ietf:params:scim:api:messages:2.0:ListResponse"],
-            "totalResults": user_query.count(),
-            "itemsPerPage": 50,
+            "totalResults": count,
+            "itemsPerPage": count,
             "startIndex": 1,
             "Resources": [
                 self.generate_user_schema(user_profile)
@@ -684,6 +686,40 @@ class TestSCIMUser(SCIMTestCase):
         output_data = orjson.loads(result.content)
         expected_response_schema = self.generate_user_schema(hamlet)
         self.assertEqual(output_data, expected_response_schema)
+
+    def test_put_change_fails_atomically(self) -> None:
+        """
+        If one of the changes requested in a SCIM update fails partway
+        through, none of the other changes in that same request should
+        be persisted either.
+        """
+        hamlet = self.example_user("hamlet")
+        original_email = hamlet.delivery_email
+        self.assertEqual(hamlet.role, UserProfile.ROLE_MEMBER)
+
+        # This payload changes both the email and the role. We simulate
+        # the role change failing after the email change has already run,
+        # to verify the email change gets rolled back too.
+        payload = {
+            "schemas": ["urn:ietf:params:scim:schemas:core:2.0:User"],
+            "id": hamlet.id,
+            "userName": "bjensen@zulip.com",
+            "role": "administrator",
+        }
+        with (
+            mock.patch(
+                "zerver.lib.scim.do_change_user_role", side_effect=Exception("simulated failure")
+            ),
+            self.assertLogs("django_scim.views", "ERROR") as mock_scim_logger,
+            self.assertLogs("django.request", "ERROR"),
+        ):
+            result = self.json_put(f"/scim/v2/Users/{hamlet.id}", payload, **self.scim_headers())
+        self.assertEqual(result.status_code, 500)
+        self.assertIn("simulated failure", mock_scim_logger.output[0])
+
+        hamlet.refresh_from_db()
+        self.assertEqual(hamlet.delivery_email, original_email)
+        self.assertEqual(hamlet.role, UserProfile.ROLE_MEMBER)
 
     def test_put_deactivate_reactivate_user(self) -> None:
         hamlet = self.example_user("hamlet")
@@ -1202,7 +1238,7 @@ class TestSCIMGroup(SCIMTestCase):
         expected_response_schema = {
             "schemas": ["urn:ietf:params:scim:api:messages:2.0:ListResponse"],
             "totalResults": 1,
-            "itemsPerPage": 50,
+            "itemsPerPage": 1,
             "startIndex": 1,
             "Resources": [self.generate_group_schema(test_group)],
         }
@@ -1223,7 +1259,7 @@ class TestSCIMGroup(SCIMTestCase):
         expected_response_schema = {
             "schemas": ["urn:ietf:params:scim:api:messages:2.0:ListResponse"],
             "totalResults": 0,
-            "itemsPerPage": 50,
+            "itemsPerPage": 0,
             "startIndex": 1,
             "Resources": [],
         }
@@ -1244,10 +1280,11 @@ class TestSCIMGroup(SCIMTestCase):
         self.assertEqual(result_all.status_code, 200)
         output_data_all = orjson.loads(result_all.content)
 
+        count = NamedUserGroup.objects.filter(realm_for_sharding=realm).count()
         expected_response_schema = {
             "schemas": ["urn:ietf:params:scim:api:messages:2.0:ListResponse"],
-            "totalResults": NamedUserGroup.objects.filter(realm_for_sharding=realm).count(),
-            "itemsPerPage": 50,
+            "totalResults": count,
+            "itemsPerPage": count,
             "startIndex": 1,
             "Resources": [
                 self.generate_group_schema(group)

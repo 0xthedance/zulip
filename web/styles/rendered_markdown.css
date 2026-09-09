@@ -916,7 +916,7 @@
 
         /* Hide the code buttons container when the user is
            clicking on the code block other than the buttons.
-           This allows the user to select part of the the code
+           This allows the user to select part of the code
            without the buttons interfering with the selection. */
         &:active .code-buttons-container:not(:hover) {
             visibility: hidden;
@@ -1056,6 +1056,24 @@
             max-width: 100%;
             margin-top: 10px;
         }
+    }
+}
+
+.message_content.hide-link-previews {
+    .message_embed,
+    .youtube-video,
+    .embed-video,
+    .vimeo-video {
+        display: none;
+    }
+
+    /* A gallery whose only children are hidden video previews has
+       nothing left but its bottom margin. Galleries that also hold
+       image or video previews must survive, since those stay visible. */
+    .message-thumbnail-gallery:not(
+        :has(> :not(.youtube-video, .embed-video, .vimeo-video))
+    ) {
+        display: none;
     }
 }
 

@@ -637,6 +637,24 @@ export function update_messages(events: UpdateMessageEvent[]): void {
                 drafts.rename_stream_recipient(old_stream_id, orig_topic, new_stream_id, new_topic);
             }
 
+            // Before editing the topic or stream on any message, update the
+            // topic links to point to the right place. This must run while
+            // the messages still have their old stream and topic, so that we
+            // can fetch their old records in the link maps.
+            if (topic_edited || stream_changed) {
+                message_store.process_topic_edit({
+                    message_ids: event.message_ids,
+                    new_stream_id: new_stream_id ?? old_stream_id,
+                    new_topic: get_post_edit_topic(
+                        topic_edited,
+                        only_topic_case_changed,
+                        event,
+                        new_topic,
+                        anchor_message,
+                    ),
+                });
+            }
+
             for (const moved_message of event_messages) {
                 if (
                     realm.realm_message_edit_history_visibility_policy !==
@@ -786,10 +804,7 @@ export function update_messages(events: UpdateMessageEvent[]): void {
                         //
                         // If the `with` message was moved, we need to update the URL to
                         // use a message from the old topic.
-                        const message_id = Number.parseInt(
-                            current_filter.terms_with_operator("with")[0]!.operand,
-                            10,
-                        );
+                        const message_id = current_filter.message_id_operand("with")!;
                         if (event.message_ids.includes(message_id)) {
                             // At this point, we know that the `with` message was moved.
                             if (!is_old_topic_empty_locally) {

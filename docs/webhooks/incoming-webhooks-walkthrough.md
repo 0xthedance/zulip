@@ -261,17 +261,18 @@ for [generating an integration URL](https://zulip.com/help/generate-integration-
 ## Step 4: Manually test the webhook
 
 You'll want to manually test your webhook implementation in the Zulip
-development environment. There are two command line tools you can use,
-as well as a GUI tool.
+development environment.
 
-For either one of the command line tools, you'll need to [get an API
-key](https://zulip.com/api/api-keys) for an [incoming webhook
-bot](https://zulip.com/help/add-a-bot-or-integration) in your Zulip
-development environment. Replace `<api_key>` with the bot's API key in
-the examples below. This is how the server knows that the request was
-made by an authorized user.
+### Command line tools
 
-### curl
+There are two command line tools you can use. For either one of them,
+you'll need to [get an API key](https://zulip.com/api/api-keys) for
+an [incoming webhook bot](https://zulip.com/help/add-a-bot-or-integration)
+in your Zulip development environment. Replace `<api_key>` with the
+bot's API key in the examples below. This is how the server knows that
+the request was made by an authorized user.
+
+#### curl
 
 Using curl, with the Zulip development server running in a separate
 console window:
@@ -289,7 +290,7 @@ After running the above command, you should see something similar to:
 And if you log-in to the web app as the bot's owner, you should see a new
 direct message from the bot.
 
-### `send_webhook_fixture_message` management command
+#### `send_webhook_fixture_message` management command
 
 Using `manage.py` from within the Zulip development environment:
 
@@ -312,7 +313,7 @@ example:
 
     --custom-headers='{"X-Custom-Header": "value"}'
 
-The format is a JSON dictionary, so make sure that the header names do
+The format is a JSON object, so make sure that the header names do
 not contain any spaces in them and that you use the precise quoting
 approach shown above.
 
@@ -335,8 +336,37 @@ By having Zulip open in one browser tab and this tool in another, you can
 quickly tweak your webhook code and send sample messages for different
 test fixtures.
 
-Custom HTTP headers must be entered as a JSON dictionary, if you want to
+Custom HTTP headers must be entered as a JSON object, if you want to
 use any. Feel free to use 4-spaces as tabs for indentation if you'd like.
+
+### Testing with the third-party service
+
+:::{warning}
+The development environment is not hardened against hostile traffic. Only
+expose it while you are actively testing.
+:::
+
+To have the third-party service deliver the webhooks itself, it needs to
+be able to reach your development server over the internet.
+
+You don't need to reconfigure the development server for this. You can
+use a tunneling tool, such as [UltraHook](https://www.ultrahook.com/) or
+[localtunnel](https://github.com/localtunnel/localtunnel), to expose
+`http://localhost:9991` at a temporary public URL. When you configure the
+webhook in the third-party service, use that temporary public URL with the
+path for your incoming webhook integration, e.g.,
+`<temporary-public-url>/api/v1/external/helloworld?api_key=<api_key>`.
+
+End-to-end testing with live data can help you spot why something isn't
+working, or whether the service is using [custom HTTP
+headers](incoming-webhooks-reference.md#custom-http-headers) that your
+integration needs to handle.
+
+If you instead need the development server to be reachable from another
+device on your own network, the mobile project's guide to [running the app
+against a development
+server](https://github.com/zulip/zulip-flutter/blob/main/docs/howto/dev-server.md)
+covers configuring the server to listen on all network interfaces.
 
 ## Step 5: Create automated tests
 

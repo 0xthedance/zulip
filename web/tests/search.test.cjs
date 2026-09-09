@@ -356,6 +356,112 @@ run_test("create_item_from_search_string with invalid string", () => {
     assert.equal(pills.length, 0);
 });
 
+run_test("generate_pills_html with unknown channel", ({mock_template, override}) => {
+    mock_template("search_list_item.hbs", true, (_data, html) => html);
+    override(realm, "realm_empty_topic_display_name", "general chat");
+
+    // A known channel followed by a topic is rendered as a combined
+    // `#channel > topic` pill.
+    let html = search_pill.generate_pills_html(`channel:${verona.stream_id} topic:lunch`, "");
+    assert.ok(html.includes("decorated-channel-name"));
+
+    // The channel can be unknown to this client, e.g. a channel
+    // deleted while a pill referenced it. We render separate pills,
+    // with the channel term rendered as invalid.
+    const unknown_stream_id_string = "999";
+    assert.equal(stream_data.get_sub_by_id_string(unknown_stream_id_string), undefined);
+    html = search_pill.generate_pills_html(`channel:${unknown_stream_id_string} topic:lunch`, "");
+    assert.ok(!html.includes("decorated-channel-name"));
+    assert.ok(html.includes(`channel:${unknown_stream_id_string}`));
+    assert.ok(html.includes("topic: lunch"));
+
+    // The same, for an empty string topic.
+    html = search_pill.generate_pills_html(`channel:${unknown_stream_id_string} topic:`, "");
+    assert.ok(!html.includes("decorated-channel-name"));
+    assert.ok(html.includes(`channel:${unknown_stream_id_string}`));
+    assert.ok(html.includes("empty-topic-display"));
+});
+
+run_test("generate_pills_html with an empty topic operand", ({mock_template, override}) => {
+    mock_template("search_list_item.hbs", true, (_data, html) => html);
+    override(realm, "realm_empty_topic_display_name", "general chat");
+
+    const empty_topic_pill_value = `topic:<span class="empty-topic-display"> translated: general chat</span>`;
+
+    // With nothing typed into the search input, the `topic:` term comes
+    // from an existing pill, where an empty operand means "general chat".
+    let html = search_pill.generate_pills_html("topic:", "");
+    assert.ok(html.includes(empty_topic_pill_value));
+
+    // When another term is being typed after `topic:` (from an existing
+    // pill), the existing `topic:` term still represents an empty operand,
+    // so "general chat" is displayed for it.
+    html = search_pill.generate_pills_html("topic: zo", "zo");
+    assert.ok(html.includes(empty_topic_pill_value));
+
+    // Having typed `topic:` out in full, the user is picking an operand,
+    // so "general chat" is a useful completion. Trailing whitespace
+    // doesn't change that.
+    html = search_pill.generate_pills_html("topic:", "topic:");
+    assert.ok(html.includes(empty_topic_pill_value));
+    html = search_pill.generate_pills_html("topic:", "topic: ");
+    assert.ok(html.includes(empty_topic_pill_value));
+
+    // But when we're suggesting `topic` as an operator to add, for a
+    // partially typed operator, the user hasn't asked for an operand
+    // yet, so we suggest the bare operator.
+    html = search_pill.generate_pills_html("topic:", "to");
+    assert.ok(html.includes("topic:"));
+    assert.ok(!html.includes("empty-topic-display"));
+
+    html = search_pill.generate_pills_html("-topic:", "-to");
+    assert.ok(html.includes("-topic:"));
+    assert.ok(!html.includes("empty-topic-display"));
+});
+
+run_test("generate_pills_html for general chat suggestions", ({mock_template, override}) => {
+    mock_template("search_list_item.hbs", true, (_data, html) => html);
+    override(realm, "realm_empty_topic_display_name", "general chat");
+
+    const channel_topic_suggestion = `channel:${verona.stream_id} topic:`;
+
+    function assert_suggests_general_chat(suggestion, text_query) {
+        const html = search_pill.generate_pills_html(suggestion, text_query);
+        assert.ok(html.includes("empty-topic-display"));
+        assert.ok(html.includes("translated: general chat"));
+    }
+
+    function assert_suggests_topic_operator(suggestion, text_query) {
+        const html = search_pill.generate_pills_html(suggestion, text_query);
+        assert.ok(!html.includes("empty-topic-display"));
+        assert.ok(!html.includes("translated: general chat"));
+        assert.ok(html.includes("topic:"));
+    }
+
+    // An empty topic operand is rendered as general chat when it's an
+    // already formed pill, a bare `topic:` operator, a topic of a
+    // channel the user has typed, or matches the text the user is
+    // typing for the topic.
+    assert_suggests_general_chat(channel_topic_suggestion, "");
+    assert_suggests_general_chat(channel_topic_suggestion, "topic:");
+    assert_suggests_general_chat(channel_topic_suggestion, "-topic:");
+    assert_suggests_general_chat(channel_topic_suggestion, `channel:${verona.stream_id}`);
+    assert_suggests_general_chat(channel_topic_suggestion, "topic:gen");
+    assert_suggests_general_chat(channel_topic_suggestion, "topic:general chat");
+    assert_suggests_general_chat(channel_topic_suggestion, "general");
+    assert_suggests_general_chat(channel_topic_suggestion, "chat");
+
+    // But when the user is still typing the `topic` operator itself,
+    // we're suggesting the operator, not the general chat topic.
+    assert_suggests_topic_operator(channel_topic_suggestion, "to");
+    assert_suggests_topic_operator(channel_topic_suggestion, "Topic");
+    assert_suggests_topic_operator(`channel:${verona.stream_id} -topic:`, "-to");
+
+    // The operator suggestion only applies to the last term; an
+    // earlier empty topic term is always general chat.
+    assert_suggests_general_chat(`channel:${verona.stream_id} topic: has:link`, "to");
+});
+
 run_test("set_search_bar_contents with duplicate pills", () => {
     const duplicate_attachment_terms = [
         {

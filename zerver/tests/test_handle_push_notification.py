@@ -357,7 +357,7 @@ class HandlePushNotificationTest(PushNotificationTestCase):
             handle_push_notification(self.user_profile.id, missed_message)
 
     @mock.patch("zerver.lib.push_notifications.push_notifications_configured", return_value=True)
-    @override_settings(ZULIP_SERVICE_PUSH_NOTIFICATIONS=False, ZULIP_SERVICES=set())
+    @override_settings(ZULIP_SERVICE_PUSH_NOTIFICATIONS=False)
     def test_read_message(self, mock_push_notifications: mock.MagicMock) -> None:
         self.setup_apns_tokens()
         self.setup_fcm_tokens()
@@ -686,15 +686,16 @@ class HandlePushNotificationTest(PushNotificationTestCase):
         test_end_to_end(missed_message, db_query_count=8)
 
         # Channel message
-        # 3 extra queries than 1:1 DM
+        # 2 extra queries than 1:1 DM
         # 1 : fetch Stream in `access_message_and_usermessage` codepath
-        # 1 : query NamedUserGroup in `check_can_access_user` codepath
         # 1 : fetch Stream in `get_message_payload` (TODO: we can avoid this)
+        # `check_can_access_user` adds no query here because the sender is the
+        # recipient themselves, so it short-circuits before any DB access.
         channel = get_stream("Denmark", realm)
         message = self.get_message(Recipient.STREAM, channel.id, realm.id)
         UserMessage.objects.create(user_profile=self.user_profile, message=message)
         missed_message = {"message_id": message.id, "trigger": NotificationTriggers.STREAM_PUSH}
-        test_end_to_end(missed_message, db_query_count=10)
+        test_end_to_end(missed_message, db_query_count=9)
 
         # Channel message: private channel + user-group mention
         # 3 extra queries than prev:

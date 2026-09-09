@@ -1230,6 +1230,33 @@ paths:
                                 }
                             - type: object
                               description: |
+                                Event sent to a user's clients when the user completes the OAuth flow
+                                for the [Google Meet integration](/help/configure-call-provider).
+                                Clients need to know whether initiating Google Meet OAuth is required
+                                before creating a Google Meet call.
+
+                                **Changes**: New in Zulip 13.0 (feature level ZF-eabf93).
+                              properties:
+                                id:
+                                  $ref: "#/components/schemas/EventIdSchema"
+                                type:
+                                  allOf:
+                                    - $ref: "#/components/schemas/EventTypeSchema"
+                                    - enum:
+                                        - has_google_meet_token
+                                value:
+                                  type: boolean
+                                  description: |
+                                    A boolean specifying whether the user has a Google Meet access token.
+                              additionalProperties: false
+                              example:
+                                {
+                                  "type": "has_google_meet_token",
+                                  "value": true,
+                                  "id": 0,
+                                }
+                            - type: object
+                              description: |
                                 A simple event sent when the set of invitations changes.
                                 This event is sent to organization administrators and the creator of
                                 the changed invitation; this tells clients they need to refetch
@@ -1453,7 +1480,7 @@ paths:
                                     Not present for clients that support the `simplified_presence_events`
                                     [client capability](/api/register-queue#parameter-client_capabilities).
 
-                                    Object containing the presence data (legacy format) of of the modified
+                                    Object containing the presence data (legacy format) of the modified
                                     user.
                                   additionalProperties:
                                     type: object
@@ -4630,9 +4657,10 @@ paths:
                             - type: object
                               additionalProperties: false
                               description: |
-                                Event sent to the user who requested a
+                                Event sent to organization administrators when the
+                                status of a public or standard
                                 [data export](/help/export-your-organization)
-                                when the status of the data export changes.
+                                in the organization changes.
                               properties:
                                 id:
                                   $ref: "#/components/schemas/EventIdSchema"
@@ -5651,8 +5679,8 @@ paths:
                                         The URL of the custom Jitsi Meet server configured in this organization's
                                         settings.
 
-                                        `null`, the default, means that the organization is using the should use the
-                                        server-level configuration, `server_jitsi_server_url`.
+                                        `null`, the default, means that the organization is using the server-level
+                                        configuration, `server_jitsi_server_url`.
 
                                         **Changes**: New in Zulip 8.0 (feature level 212). Previously, this was only
                                         available as a server-level configuration, and required a server restart to
@@ -6003,11 +6031,15 @@ paths:
                                         - 6 = Constructor Groups
                                         - 7 = Nextcloud Talk
                                         - 8 = Webex (User OAuth integration)
+                                        - 9 = Google Meet (User OAuth integration)
 
                                         Note that only one of the [Zoom integrations][zoom-video-calls] can
                                         be configured on a Zulip server.
 
-                                        **Changes**: In Zulip 12.0 (feature level 493),
+                                        **Changes**: In Zulip 13.0 (feature level ZF-eabf93),
+                                        added the Google Meet option.
+
+                                        In Zulip 12.0 (feature level 493),
                                         added the Webex OAuth option.
 
                                         In Zulip 12.0 (feature level 465), added the
@@ -9246,6 +9278,8 @@ paths:
                   - additionalProperties: false
                     required:
                       - id
+                      - message_url
+                      - message_link
                     properties:
                       result: {}
                       msg: {}
@@ -9254,6 +9288,37 @@ paths:
                         type: integer
                         description: |
                           The unique ID assigned to the sent message.
+                      message_url:
+                        type: string
+                        description: |
+                          A URL that [links directly to the sent
+                          message](/help/link-to-a-message-or-conversation#get-a-link-to-a-specific-message)
+                          within its conversation.
+
+                          For channel messages, [the channel's name is included in the
+                          URL](/api/zulip-urls#encoding-channels) only when the sender has access to
+                          the channel's metadata. Otherwise, a URL referencing the channel by ID alone
+                          is returned, so that the channel's name is not revealed to a sender who
+                          cannot otherwise access it (such as a bot with permission to post to the
+                          channel but not to read it).
+
+                          **Changes**: New in Zulip 13.0 (feature level 508).
+                      message_link:
+                        type: string
+                        description: |
+                          A [Markdown link](/help/format-your-message-using-markdown#links) to the
+                          sent message within its conversation, matching the link produced by the
+                          ["Copy link to
+                          message"](/help/link-to-a-message-or-conversation#get-a-link-to-a-specific-message)
+                          feature in the Zulip web app; for example,
+                          `[#channel name > topic name @ 💬](message_url)`.
+
+                          For direct messages, and for channel messages where the channel name is
+                          omitted from `message_url` as described above, this is the same plain URL as
+                          `message_url` since there is no suitable text label for the Markdown link
+                          formatting.
+
+                          **Changes**: New in Zulip 13.0 (feature level 508).
                       automatic_new_visibility_policy:
                         type: integer
                         enum:
@@ -9286,6 +9351,8 @@ paths:
                       {
                         "msg": "",
                         "id": 42,
+                        "message_url": "https://example.zulipchat.com/#narrow/channel/7-test-here/topic/test/near/42",
+                        "message_link": "[#test here > test @ 💬](https://example.zulipchat.com/#narrow/channel/7-test-here/topic/test/near/42)",
                         "automatic_new_visibility_policy": 2,
                         "result": "success",
                       }
@@ -9559,6 +9626,14 @@ paths:
                     <tr>
                         <td><code>collapsed</code></td>
                         <td>Whether the user has <a href="/help/collapse-a-message">collapsed this message</a>.</td>
+                    </tr>
+                    <tr>
+                        <td><code>hide_link_previews</code></td>
+                        <td>Whether the user has hidden auto-generated link previews on this message.
+                            Can be set on any message, regardless of whether it currently has a link preview.
+                            <br /><br />
+                            <b>Changes</b>: New in Zulip 13.0 (feature level 510).
+                        </td>
                     </tr>
                     <tr>
                         <td><code>mentioned</code></td>
@@ -10662,14 +10737,19 @@ paths:
                     The channel ID to move the message(s) to, to request moving
                     messages to another channel.
 
-                    Should only be sent when changing the channel, and will throw an error
+                    Should only be sent when changing the channel. Will throw an error
                     if the target message is not a channel message.
 
                     Note that a message's content and channel cannot be changed at the
                     same time, so sending both `content` and `stream_id` parameters will
                     throw an error.
 
-                    **Changes**: New in Zulip 3.0 (feature level 1).
+                    **Changes**: Prior to Zulip 13.0 (feature level 509), passing the channel
+                    ID that the target message is currently in was processed as a successful
+                    channel move, even if the target message was not moved (i.e., neither its
+                    channel nor topic were changed).
+
+                    New in Zulip 3.0 (feature level 1).
                   type: integer
                   example: 43
             encoding:
@@ -10932,6 +11012,10 @@ paths:
         If the `report_type` parameter value is `"other"`, the `description`
         parameter is required. Clients should also enforce and communicate this
         behavior in the UI.
+
+        **Changes**: In Zulip 13.0 (feature level 511), this endpoint
+        now returns an error if the message report fails to be sent to the
+        moderation request channel.
 
         **Changes**: New in Zulip 11.0 (feature level 382). This API builds on
         the `moderation_request_channel` realm setting, which was added in
@@ -15050,6 +15134,121 @@ paths:
       responses:
         "200":
           $ref: "#/components/responses/SimpleSuccess"
+  /realm/deactivate:
+    post:
+      operationId: deactivate-realm
+      summary: Deactivate an organization
+      tags: ["server_and_organizations"]
+      description: |
+        [Deactivate an organization](/help/deactivate-your-organization) on the
+        Zulip server. Deactivating an organization immediately logs out all of
+        its users and prevents them from logging in again.
+
+        A deactivated organization can be reactivated via a [management
+        command](https://zulip.readthedocs.io/en/latest/production/management-commands.html),
+        unless its data has been permanently deleted (see the
+        [`deletion_delay_days` parameter](/api/deactivate-realm#parameter-deletion_delay_days)
+        below).
+
+        This endpoint is primarily useful for Zulip servers that host
+        [multiple organizations](https://zulip.readthedocs.io/en/latest/production/multiple-organizations.html).
+      x-requires-owner: true
+      requestBody:
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                deletion_delay_days:
+                  type: integer
+                  nullable: true
+                  description: |
+                    The number of days to wait before permanently deleting all
+                    of the deactivated organization's data (users, channels,
+                    messages, etc.).
+
+                    A value of `0` will delete the organization's data
+                    immediately, which means that the organization cannot be
+                    reactivated. A `null` value indicates that the organization's
+                    data will not be deleted, but rather retained indefinitely.
+
+                    Valid values for this parameter are limited to the range
+                    permitted by the server, indicated by the
+                    `server_min_deactivated_realm_deletion_days` and
+                    `server_max_deactivated_realm_deletion_days` fields in the
+                    [`POST /register`](/api/register-queue) response. A value of
+                    `null` is only permitted when
+                    `server_max_deactivated_realm_deletion_days` is `null`. A
+                    value of `0` is only permitted when
+                    `server_min_deactivated_realm_deletion_days` is `null`.
+
+                    These limits do not apply to
+                    [Zulip Cloud demo organizations](/help/demo-organizations),
+                    for which this parameter is instead required: it must be `0`
+                    when the organization owner has not configured an email
+                    address, and otherwise must not exceed the number of days
+                    remaining before the demo organization's scheduled deletion.
+
+                    **Changes**: New in Zulip 10.0 (feature level 332).
+                  example: 30
+            encoding:
+              deletion_delay_days:
+                contentType: application/json
+      responses:
+        "200":
+          $ref: "#/components/responses/SimpleSuccess"
+        "400":
+          description: Bad request.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - allOf:
+                      - $ref: "#/components/schemas/CodedError"
+                      - description: |
+                          An example JSON response for when the current user is
+                          not an organization owner:
+                        example:
+                          {
+                            "code": "UNAUTHORIZED_PRINCIPAL",
+                            "msg": "Must be an organization owner",
+                            "result": "error",
+                          }
+                  - allOf:
+                      - $ref: "#/components/schemas/CodedError"
+                      - description: |
+                          An example JSON response for when `deletion_delay_days`
+                          is below the minimum permitted by the server:
+                        example:
+                          {
+                            "code": "BAD_REQUEST",
+                            "msg": "Data deletion time must be at least 14 days in the future.",
+                            "result": "error",
+                          }
+                  - allOf:
+                      - $ref: "#/components/schemas/CodedError"
+                      - description: |
+                          An example JSON response for when `deletion_delay_days`
+                          exceeds the maximum permitted by the server:
+                        example:
+                          {
+                            "code": "BAD_REQUEST",
+                            "msg": "Data deletion time must be at most 30 days in the future.",
+                            "result": "error",
+                          }
+                  - allOf:
+                      - $ref: "#/components/schemas/CodedError"
+                      - description: |
+                          An example JSON response for when an invalid
+                          `deletion_delay_days` is given for a
+                          [Zulip Cloud demo organization](/help/demo-organizations):
+                        example:
+                          {
+                            "code": "BAD_REQUEST",
+                            "msg": "Invalid data deletion time for demo organization.",
+                            "result": "error",
+                          }
   /realm/profile_fields:
     get:
       operationId: get-custom-profile-fields
@@ -15230,17 +15429,11 @@ paths:
               properties:
                 name:
                   description: |
-                    The name of the custom profile field, which will appear both in
-                    user-facing settings UI for configuring custom profile fields and
-                    in UI displaying a user's profile.
+                    The name of the custom profile field, which appears both in
+                    the user-facing settings UI for configuring the custom profile
+                    fields and in the UI displaying a user's profile.
                   type: string
                   example: "Favorite programming language"
-                hint:
-                  description: |
-                    The help text to be displayed for the custom profile field in user-facing
-                    settings UI for configuring custom profile fields.
-                  type: string
-                  example: "Your favorite programming language."
                 field_type:
                   description: |
                     The field type can be any of the supported custom profile field types. See the
@@ -15259,74 +15452,18 @@ paths:
                     **Changes**: Field type `8` added in Zulip 6.0 (feature level 151).
                   type: integer
                   example: 3
+                hint:
+                  $ref: "#/components/schemas/CustomProfileFieldHintSchema"
                 field_data:
-                  description: |
-                    Field types 3 (Dropdown) and 7 (External account) support storing
-                    additional configuration for the field type in the `field_data` attribute.
-
-                    For field type 3 (Dropdown), this attribute is a JSON dictionary
-                    defining the choices and the order they will be displayed in the
-                    dropdown UI for individual users to select an option.
-
-                    The interface for field type 7 is not yet stabilized.
-                  type: object
-                  example:
-                    {
-                      "python": {"text": "Python", "order": "1"},
-                      "java": {"text": "Java", "order": "2"},
-                    }
+                  $ref: "#/components/schemas/CustomProfileFieldDataSchema"
                 display_in_profile_summary:
-                  description: |
-                    Whether clients should display this profile field in a summary section of a
-                    user's profile (or in a more easily accessible "small profile").
-
-                    At most 2 profile fields may have this property be true in a given
-                    organization.
-
-                    The "Users" profile field is not supported, but that is likely to
-                    be temporary.
-
-                    [profile-field-types]: /help/custom-profile-fields#profile-field-types
-
-                    **Changes**: Before Zulip 12.0 (feature level 476), the
-                    "Paragraph" field type was not supported.
-
-                    New in Zulip 6.0 (feature level 146).
-                  type: boolean
-                  example: true
+                  $ref: "#/components/schemas/CustomProfileFieldDisplayInProfileSummarySchema"
                 required:
-                  description: |
-                    Whether an organization administrator has configured this profile field as
-                    required.
-
-                    Because the required property is mutable, clients cannot assume that a required
-                    custom profile field has a value. The Zulip web application displays a prominent
-                    banner to any user who has not set a value for a required field.
-
-                    **Changes**: New in Zulip 9.0 (feature level 244).
-                  type: boolean
-                  example: true
+                  $ref: "#/components/schemas/CustomProfileFieldRequiredSchema"
                 editable_by_user:
-                  description: |
-                    Whether regular users can edit this profile field on their own account.
-
-                    Note that organization administrators can edit custom profile fields for any user
-                    regardless of this setting.
-
-                    **Changes**: New in Zulip 10.0 (feature level 296).
-                  type: boolean
-                  example: true
+                  $ref: "#/components/schemas/CustomProfileFieldEditableByUserSchema"
                 use_for_user_matching:
-                  description: |
-                    Whether this custom profile field should be used to match users in typeahead
-                    suggestions. Only allowed for Short Text and External Account
-                    [profile field types](/help/custom-profile-fields#profile-field-types).
-
-                    This field is only included when its value is `true`.
-
-                    **Changes**: New in Zulip 12.0 (feature level 455).
-                  type: boolean
-                  example: false
+                  $ref: "#/components/schemas/CustomProfileFieldUseForUserMatchingSchema"
               required:
                 - field_type
             encoding:
@@ -15360,6 +15497,164 @@ paths:
                         description: |
                           The ID for the custom profile field.
                     example: {"result": "success", "msg": "", "id": 9}
+  /realm/profile_fields/{field_id}:
+    patch:
+      operationId: update-custom-profile-field
+      summary: Update a custom profile field
+      tags: ["server_and_organizations"]
+      x-requires-administrator: true
+      description: |
+        Update the configuration of a
+        [custom profile field](/help/custom-profile-fields) in the user's
+        organization.
+
+        The [type](/api/create-custom-profile-field#parameter-field_type)
+        of a custom profile field cannot be changed.
+
+        At most, 2 custom profile fields can have
+        [`display_in_profile_summary`](/api/update-custom-profile-field#parameter-display_in_profile_summary)
+        set to `true` in an organization.
+
+        For custom profile fields with type 7 (External account) that use
+        one of Zulip's configured default external account providers
+        (e.g., GitHub, LinkedIn, etc.), the field's
+        [`name`](/api/update-custom-profile-field#parameter-name),
+        [`hint`](/api/update-custom-profile-field#parameter-hint), and
+        [`field_data`](/api/update-custom-profile-field#parameter-field_data)
+        cannot be changed, and attempting to do so will return an error.
+
+        **Changes**: Before Zulip 9.0 (feature level 252), the `name`,
+        `hint`, `field_data`, `required` and `display_in_profile_summary`
+        parameters were all required in every request, even when their
+        values were unchanged.
+      parameters:
+        - $ref: "#/components/parameters/CustomProfileFieldId"
+      requestBody:
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                name:
+                  description: |
+                    The name of the custom profile field, which appears both in
+                    the user-facing settings UI for configuring the custom profile
+                    fields and in the UI displaying a user's profile.
+                  type: string
+                  example: "Programming language"
+                hint:
+                  $ref: "#/components/schemas/CustomProfileFieldHintSchema"
+                field_data:
+                  $ref: "#/components/schemas/CustomProfileFieldDataSchema"
+                display_in_profile_summary:
+                  $ref: "#/components/schemas/CustomProfileFieldDisplayInProfileSummarySchema"
+                required:
+                  $ref: "#/components/schemas/CustomProfileFieldRequiredSchema"
+                editable_by_user:
+                  $ref: "#/components/schemas/CustomProfileFieldEditableByUserSchema"
+                use_for_user_matching:
+                  $ref: "#/components/schemas/CustomProfileFieldUseForUserMatchingSchema"
+            encoding:
+              field_data:
+                contentType: application/json
+              display_in_profile_summary:
+                contentType: application/json
+              required:
+                contentType: application/json
+              editable_by_user:
+                contentType: application/json
+              use_for_user_matching:
+                contentType: application/json
+      responses:
+        "200":
+          $ref: "#/components/responses/SimpleSuccess"
+        "400":
+          description: Bad request.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - allOf:
+                      - $ref: "#/components/schemas/CodedError"
+                      - example:
+                          {
+                            "code": "BAD_REQUEST",
+                            "msg": "Field id 4 not found.",
+                            "result": "error",
+                          }
+                        description: |
+                          A typical failed JSON response for when there is no custom profile
+                          field with the requested ID:
+                  - allOf:
+                      - $ref: "#/components/schemas/CodedError"
+                      - example:
+                          {
+                            "code": "BAD_REQUEST",
+                            "msg": "A field with that label already exists.",
+                            "result": "error",
+                          }
+                        description: |
+                          A typical failed JSON response for when another custom profile field
+                          already uses the requested name:
+                  - allOf:
+                      - $ref: "#/components/schemas/CodedError"
+                      - example:
+                          {
+                            "code": "BAD_REQUEST",
+                            "msg": "Only 2 custom profile fields can be displayed in the profile summary.",
+                            "result": "error",
+                          }
+                        description: |
+                          A typical failed JSON response for when setting
+                          `display_in_profile_summary` to `true` would exceed the
+                          organization's limit of 2 such fields:
+                  - allOf:
+                      - $ref: "#/components/schemas/CodedError"
+                      - example:
+                          {
+                            "code": "BAD_REQUEST",
+                            "msg": "Default custom field cannot be updated.",
+                            "result": "error",
+                          }
+                        description: |
+                          A typical failed JSON response for when attempting to change the
+                          `name`, `hint`, or `field_data` of a default external account field:
+    delete:
+      operationId: delete-custom-profile-field
+      summary: Delete a custom profile field
+      tags: ["server_and_organizations"]
+      x-requires-administrator: true
+      description: |
+        Delete a [custom profile field](/help/custom-profile-fields) in
+        the user's organization.
+
+        This will also permanently delete any value configured for the
+        custom profile field from every user profile in the database.
+        Therefore, it's recommended that clients warn the active user of
+        the related data removal before submitting the request, e.g.,
+        notify them of how many users will have their profile data
+        deleted as a result of deleting the custom profile field.
+      parameters:
+        - $ref: "#/components/parameters/CustomProfileFieldId"
+      responses:
+        "200":
+          $ref: "#/components/responses/SimpleSuccess"
+        "400":
+          description: Bad request.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/CodedError"
+                  - example:
+                      {
+                        "code": "BAD_REQUEST",
+                        "msg": "Field id 4 not found.",
+                        "result": "error",
+                      }
+                    description: |
+                      A typical failed JSON response for when there is no custom profile
+                      field with the requested ID:
   /realm/user_settings_defaults:
     patch:
       operationId: update-realm-user-settings-defaults
@@ -17165,6 +17460,67 @@ paths:
       responses:
         "200":
           $ref: "#/components/responses/SimpleSuccess"
+  /export/realm/{export_id}:
+    delete:
+      operationId: delete-realm-export
+      summary: Delete a data export
+      tags: ["server_and_organizations"]
+      x-requires-administrator: true
+      description: |
+        Delete a completed public or standard [data export][export-data]
+        of the organization.
+
+        Data exports that happened on a previous server (i.e., an export
+        with `"export_from_prior_server": true` in the
+        [`GET /export/realm`](/api/get-realm-exports#response) response)
+        cannot be deleted using this endpoint, since their tarball is no
+        longer stored on this server; attempting to do so fails with
+        the same error as for an export that has already been deleted.
+
+        This endpoint's success response does not describe the resulting
+        state of the organization's data exports. Clients should rely
+        on the [`realm_export` event](/api/get-events#realm_export),
+        which every organization administrator receives whenever a
+        data export's state changes, for the current state of an
+        organization's data exports.
+
+        **Changes**: Prior to Zulip 13.0 (feature level 506), data
+        exports without a tarball stored on this server had no
+        dedicated status, so attempting to delete one resulted in an
+        unexpected error. Starting at that feature level, such a
+        delete attempt instead fails cleanly, as described above. This
+        change was also backported to the Zulip 12.x series, at
+        feature level 499.
+
+        New in Zulip 2.1.
+
+        [export-data]: /help/export-your-organization#export-data-in-an-importable-format
+      parameters:
+        - name: export_id
+          in: path
+          description: The ID of the data export to be deleted.
+          required: true
+          schema:
+            type: integer
+          example: 1
+      responses:
+        "200":
+          $ref: "#/components/responses/SimpleSuccess"
+        "400":
+          description: Bad request.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/CodedError"
+                  - description: |
+                      A typical failed JSON response for an invalid data export ID.
+                    example:
+                      {
+                        "code": "BAD_REQUEST",
+                        "msg": "Invalid data export ID",
+                        "result": "error",
+                      }
   /export/realm:
     get:
       operationId: get-realm-exports
@@ -17226,16 +17582,32 @@ paths:
       tags: ["server_and_organizations"]
       x-requires-administrator: true
       description: |
-        Create a public or a standard [data export][export-data] of the organization.
-
         !!! warn ""
 
             **Note**: If you're the administrator of a self-hosted installation,
             you may be looking for the documentation on [server data export and
             import][data-export] or [server backups][backups].
 
-        **Changes**: Prior to Zulip 10.0 (feature level 304), only
-        public data exports could be created using this endpoint.
+        Create a public or a standard [data export][export-data] of the
+        organization.
+
+        This endpoint only queues the data export; it does not wait for
+        the export to complete, which depending on the size of the
+        organization can take anywhere from seconds to an hour.
+        Therefore, this endpoint's success response does not describe
+        the outcome of the export.
+
+        To find out the outcome of the export, clients should rely on the
+        [`realm_export` event](/api/get-events#realm_export), which is
+        which is sent to every organization administrator immediately
+        when the export is requested, and again once it completes or
+        fails. Additionally, when the export succeeds, the user who
+        requested it will receive a direct message from the Notification
+        Bot with a link to the organization's data exports panel, where
+        the export can be downloaded.
+
+        **Changes**: Prior to Zulip 10.0 (feature level 304), only public
+        data exports could be created using this endpoint.
 
         New in Zulip 2.1.
 
@@ -17268,7 +17640,7 @@ paths:
                     `2` being replaced by `full_with_consent`. The option `full_without_consent`
                     was added for full exports without member consent.
 
-                    **Changes**: New in Zulip 10.0 (feature level 304). Previously,
+                    New in Zulip 10.0 (feature level 304). Previously,
                     all export requests were public data exports.
                   type: string
                   enum:
@@ -20123,6 +20495,17 @@ paths:
                           Webex call.
 
                           **Changes**: New in Zulip 12.0 (feature level 493).
+                      has_google_meet_token:
+                        type: boolean
+                        description: |
+                          Present if `video_calls` is present in `fetch_event_types`.
+
+                          A boolean that denotes whether the user has completed the OAuth flow for
+                          the [Google Meet integration](/help/configure-call-provider). Clients need
+                          to know whether initiating Google Meet OAuth flow is required before
+                          creating a Google Meet call.
+
+                          **Changes**: New in Zulip 13.0 (feature level ZF-eabf93).
                       giphy_api_key:
                         type: string
                         description: |
@@ -20952,11 +21335,15 @@ paths:
                           - 6 = Constructor Groups
                           - 7 = Nextcloud Talk
                           - 8 = Webex (User OAuth integration)
+                          - 9 = Google Meet (User OAuth integration)
 
                           Note that only one of the [Zoom integrations][zoom-video-calls] can
                           be configured on a Zulip server.
 
-                          **Changes**: In Zulip 12.0 (feature level 493), added the
+                          **Changes**: In Zulip 13.0 (feature level ZF-eabf93), added the
+                          Google Meet option.
+
+                          In Zulip 12.0 (feature level 493), added the
                           Webex OAuth option.
 
                           In Zulip 12.0 (feature level 465), added the
@@ -20981,10 +21368,10 @@ paths:
                           The URL of the custom Jitsi Meet server configured in this organization's
                           settings.
 
-                          `null`, the default, means that the organization is using the should use the
-                          server-level configuration, `server_jitsi_server_url`. A correct client
-                          supporting only the modern API should use `realm_jitsi_server_url ||
-                          server_jitsi_server_url` to create calls.
+                          `null`, the default, means that the organization is using the server-level
+                          configuration, `server_jitsi_server_url`. A correct client supporting only
+                          the modern API should use `realm_jitsi_server_url ?? server_jitsi_server_url`
+                          to create calls.
 
                           **Changes**: New in Zulip 8.0 (feature level 212). Previously, this was only
                           available as a server-level configuration, which was available via the
@@ -21580,14 +21967,14 @@ paths:
                           Present if `realm` is present in `fetch_event_types`.
 
                           The base URL to be used to create Jitsi video calls. Equals
-                          `realm_jitsi_server_url || server_jitsi_server_url`.
+                          `realm_jitsi_server_url ?? server_jitsi_server_url`.
 
                           **Changes**: Deprecated in Zulip 8.0 (feature level 212) and will
                           eventually be removed. Previously, the Jitsi server to use was not
                           configurable on a per-realm basis, and this field contained the server's
                           configured Jitsi server. (Which is now provided as
                           `server_jitsi_server_url`). Clients supporting older versions should fall
-                          back to this field when creating calls: using `realm_jitsi_server_url ||
+                          back to this field when creating calls: using `realm_jitsi_server_url ??
                           server_jitsi_server_url` with newer servers and using `jitsi_server_url`
                           with servers below feature level 212.
                       development_environment:
@@ -21825,6 +22212,17 @@ paths:
                           is set or not.
 
                           **Changes**: New in Zulip 10.0 (feature level 350).
+                      server_video_google_meet_app_internal:
+                        type: boolean
+                        description: |
+                          Present if `realm` is present in `fetch_event_types`.
+
+                          Whether the server admin has declared the Google Cloud
+                          OAuth 2.0 app backing the Google Meet integration to
+                          use an Internal (Workspace-restricted) audience, as
+                          opposed to an External one.
+
+                          **Changes**: New in Zulip 13.0 (feature level ZF-eabf93).
                       event_queue_longpoll_timeout_seconds:
                         type: integer
                         description: |
@@ -24863,7 +25261,7 @@ paths:
                 can_resolve_topics_group:
                   allOf:
                     - description: |
-                        The set of users who have permission to to resolve topics in this channel
+                        The set of users who have permission to resolve topics in this channel
                         expressed as an [update to a group-setting value][update-group-setting].
 
                         [update-group-setting]: /api/group-setting-values#updating-group-setting-values
@@ -25528,6 +25926,10 @@ paths:
               can_add_subscribers_group:
                 contentType: application/json
               can_create_topic_group:
+                contentType: application/json
+              can_delete_any_message_group:
+                contentType: application/json
+              can_delete_own_message_group:
                 contentType: application/json
               can_administer_channel_group:
                 contentType: application/json
@@ -27318,6 +27720,48 @@ paths:
                         "result": "success",
                         "url": "https://xxkk-7xpz.webex.com/xxkk-7xpz/j.php?MTID=mebb3ba1f366f683bcaec9d32773ce034",
                       }
+  /calls/google_meet/create:
+    post:
+      tags: ["channels"]
+      operationId: create-google-meet-video-call
+      summary: Create Google Meet video call
+      description: |
+        Create a video call URL for a Google Meet video call.
+
+        Requires the [Google Meet integration](/integrations/google-meet) to be
+        configured on the Zulip server.
+
+        Clients should confirm that the user has completed the OAuth process
+        with Google and has a Google Meet token before attempting to create a
+        video call URL. See the `has_google_meet_token` field in the [`POST
+        /register` response](/api/register-queue), as well as the
+        [`has_google_meet_token` event type](/api/get-events#has_google_meet_token).
+
+        **Changes**: New in Zulip 13.0 (feature level ZF-eabf93).
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/JsonSuccessBase"
+                  - additionalProperties: false
+                    properties:
+                      result: {}
+                      msg: {}
+                      ignored_parameters_unsupported: {}
+                      url:
+                        description: |
+                          The URL for the Google Meet video call.
+                        type: string
+                        example: "https://meet.google.com/abc-mnop-xyz"
+                    example:
+                      {
+                        "msg": "",
+                        "result": "success",
+                        "url": "https://meet.google.com/abc-mnop-xyz",
+                      }
   /calls/constructorgroups/create:
     post:
       tags: ["channels"]
@@ -27938,7 +28382,7 @@ components:
             Field types 3 (Dropdown) and 7 (External account) support storing
             additional configuration for the field type in the `field_data` attribute.
 
-            For field type 3 (Dropdown), this attribute is a JSON dictionary
+            For field type 3 (Dropdown), this attribute is a JSON object
             defining the choices and the order they will be displayed in the
             dropdown UI for individual users to select an option.
 
@@ -27998,6 +28442,82 @@ components:
         - hint
         - required
         - editable_by_user
+    CustomProfileFieldHintSchema:
+      description: |
+        The help text to be displayed for the custom profile field in user-facing
+        settings UI for configuring custom profile fields.
+      type: string
+      example: "Your favorite programming language."
+    CustomProfileFieldDataSchema:
+      description: |
+        Field types 3 (Dropdown) and 7 (External account) support storing
+        additional configuration for the field type in the `field_data` attribute.
+
+        For field type 3 (Dropdown), this attribute is a JSON object
+        defining the choices and the order they will be displayed in the
+        dropdown UI for individual users to select an option.
+
+        The interface for field type 7 is not yet stabilized.
+
+        See [profile field types](/help/custom-profile-fields#profile-field-types)
+        or the [`field_type` parameter](/api/create-custom-profile-field#parameter-field_type)
+        for what each field type number means.
+      type: object
+      example:
+        {
+          "python": {"text": "Python", "order": "1"},
+          "java": {"text": "Java", "order": "2"},
+        }
+    CustomProfileFieldDisplayInProfileSummarySchema:
+      description: |
+        Whether clients should display this profile field in the summary section of a
+        user's profile (or in a more easily accessible "small profile").
+
+        At most 2 profile fields may have this property be true in a given
+        organization.
+
+        The "Users" profile field is not supported, but that is likely to
+        be temporary.
+
+        **Changes**: Before Zulip 12.0 (feature level 476), the
+        "Paragraph" field type was not supported.
+
+        New in Zulip 6.0 (feature level 146).
+      type: boolean
+      example: true
+    CustomProfileFieldRequiredSchema:
+      description: |
+        Whether an organization administrator has configured this profile field as
+        required.
+
+        Because the required property is mutable, clients cannot assume that a required
+        custom profile field has a value. The Zulip web application displays a prominent
+        banner to any user who has not set a value for a required field.
+
+        **Changes**: New in Zulip 9.0 (feature level 244).
+      type: boolean
+      example: true
+    CustomProfileFieldEditableByUserSchema:
+      description: |
+        Whether regular users can edit this profile field on their own account.
+
+        Note that organization administrators can edit custom profile fields for any user
+        regardless of this setting.
+
+        **Changes**: New in Zulip 10.0 (feature level 296).
+      type: boolean
+      example: true
+    CustomProfileFieldUseForUserMatchingSchema:
+      description: |
+        Whether this custom profile field should be used to match users in typeahead
+        suggestions. Only allowed for Short Text and External Account
+        [profile field types](/help/custom-profile-fields#profile-field-types).
+
+        This field is only included when its value is `true`.
+
+        **Changes**: New in Zulip 12.0 (feature level 455).
+      type: boolean
+      example: false
     OnboardingStep:
       type: object
       additionalProperties: false
@@ -28228,7 +28748,7 @@ components:
             `2` being replaced by `full_with_consent`. The option `full_without_consent`
             was added for full exports without member consent.
 
-            **Changes**: New in Zulip 10.0 (feature level 304). Previously,
+            New in Zulip 10.0 (feature level 304). Previously,
             the export type was not included in these objects because only
             public data exports could be created or listed via the API or UI.
     UserGroup:
@@ -31469,4 +31989,13 @@ components:
       schema:
         type: integer
       example: 17
+      required: true
+    CustomProfileFieldId:
+      name: field_id
+      in: path
+      description: |
+        The ID of the target custom profile field.
+      schema:
+        type: integer
+      example: 4
       required: true

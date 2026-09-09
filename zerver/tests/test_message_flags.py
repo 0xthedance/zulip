@@ -1674,6 +1674,48 @@ class MessageAccessTests(ZulipTestCase):
         um = UserMessage.objects.get(user_profile_id=cordelia.id, message_id=message_id)
         self.assertEqual(um.flags_list(), ["read", "collapsed", "historical"])
 
+    def test_change_hide_link_previews(self) -> None:
+        """
+        You can set/unset hide_link_previews on a message through
+        POST /json/messages/flags, and the flag is per-user.
+        """
+        hamlet = self.example_user("hamlet")
+        cordelia = self.example_user("cordelia")
+        self.login_user(hamlet)
+        message_id = self.send_personal_message(hamlet, cordelia, "https://example.com")
+
+        # Add the flag.
+        result = self.client_post(
+            "/json/messages/flags",
+            dict(
+                messages=orjson.dumps([message_id]).decode(),
+                op="add",
+                flag="hide_link_previews",
+            ),
+        )
+        self.assert_json_success(result)
+
+        um = UserMessage.objects.get(user_profile_id=hamlet.id, message_id=message_id)
+        self.assertIn("hide_link_previews", um.flags_list())
+
+        # Verify the flag is per-user: cordelia's row is unaffected.
+        um_cordelia = UserMessage.objects.get(user_profile_id=cordelia.id, message_id=message_id)
+        self.assertNotIn("hide_link_previews", um_cordelia.flags_list())
+
+        # Remove the flag.
+        result = self.client_post(
+            "/json/messages/flags",
+            dict(
+                messages=orjson.dumps([message_id]).decode(),
+                op="remove",
+                flag="hide_link_previews",
+            ),
+        )
+        self.assert_json_success(result)
+
+        um.refresh_from_db()
+        self.assertNotIn("hide_link_previews", um.flags_list())
+
     def test_change_star_public_stream_historical(self) -> None:
         """
         You can set a message as starred/un-starred through
@@ -2041,11 +2083,11 @@ class MessageAccessTests(ZulipTestCase):
         )
         self.assert_length(filtered_messages, 4)
 
-        # Test private message access for service bot
-        service_bot = self.example_user("outgoing_webhook_bot")
-        self.subscribe(service_bot, stream_name)
+        # Test private message access for message-triggered bot
+        message_triggered_bot = self.example_user("outgoing_webhook_bot")
+        self.subscribe(message_triggered_bot, stream_name)
         filtered_messages = self.assert_bulk_access(
-            service_bot,
+            message_triggered_bot,
             more_message_ids,
             stream,
             bulk_access_messages_query_count=6,
@@ -2106,11 +2148,11 @@ class MessageAccessTests(ZulipTestCase):
         )
         self.assert_length(filtered_messages, 2)
 
-        # Test public message access for service bot
-        service_bot = self.example_user("outgoing_webhook_bot")
-        self.subscribe(service_bot, stream_name)
+        # Test public message access for message-triggered bot
+        message_triggered_bot = self.example_user("outgoing_webhook_bot")
+        self.subscribe(message_triggered_bot, stream_name)
         filtered_messages = self.assert_bulk_access(
-            service_bot,
+            message_triggered_bot,
             message_ids,
             stream,
             bulk_access_messages_query_count=4,

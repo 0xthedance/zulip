@@ -4,13 +4,16 @@
 import assert from "minimalistic-assert";
 
 import * as buddy_data from "./buddy_data.ts";
+import type {QuoteMenuSelection} from "./compose_reply.ts";
 import * as gear_menu_util from "./gear_menu_util.ts";
 import * as hash_util from "./hash_util.ts";
 import {$t} from "./i18n.ts";
 import * as message_delete from "./message_delete.ts";
 import * as message_edit from "./message_edit.ts";
 import * as message_lists from "./message_lists.ts";
+import * as message_parser from "./message_parser.ts";
 import type {Message} from "./message_store.ts";
+import * as message_store from "./message_store.ts";
 import * as narrow_state from "./narrow_state.ts";
 import {page_params} from "./page_params.ts";
 import * as people from "./people.ts";
@@ -41,7 +44,12 @@ type ActionPopoverContext = {
     should_display_remind_me_option: boolean;
     should_display_collapse: boolean;
     should_display_uncollapse: boolean;
+    should_display_hide_link_previews: boolean;
+    should_display_show_link_previews: boolean;
     should_display_quote_message: boolean;
+    quote_message_menu_item: string;
+    forward_message_menu_item: string;
+    show_quote_and_forward_hotkey_hints: boolean;
     conversation_time_url: string;
     should_display_delete_option: boolean;
     should_display_read_receipts_option: boolean;
@@ -71,6 +79,7 @@ type TopicPopoverContext = {
     all_visibility_policies: AllVisibilityPolicies;
     can_summarize_topics: boolean;
     show_ai_features: boolean;
+    has_topic_links: boolean;
 };
 
 type VisibilityChangePopoverContext = {
@@ -145,7 +154,59 @@ type BillingInfo = {
     show_plans: boolean;
 };
 
-export function get_actions_popover_content_context(message_id: number): ActionPopoverContext {
+// The Quote and Forward labels spell out what the menu item will act on,
+// so that clicking it is not a surprise when there is a text selection.
+function get_quote_menu_labels(kind: QuoteMenuSelection["kind"]): {
+    quote_message_menu_item: string;
+    forward_message_menu_item: string;
+} {
+    switch (kind) {
+        case "full_message":
+            return {
+                quote_message_menu_item: $t({defaultMessage: "Quote message"}),
+                forward_message_menu_item: $t({defaultMessage: "Forward message"}),
+            };
+        case "message_selection":
+            return {
+                quote_message_menu_item: $t({defaultMessage: "Quote selection"}),
+                forward_message_menu_item: $t({defaultMessage: "Forward selection"}),
+            };
+        case "selected_messages":
+            return {
+                quote_message_menu_item: $t({defaultMessage: "Quote selected messages"}),
+                forward_message_menu_item: $t({defaultMessage: "Forward selected messages"}),
+            };
+        default: {
+            // Fail loudly rather than mislabel the menu item if a new kind
+            // of selection is added without wording to go with it.
+            const unexpected_kind: never = kind;
+            throw new Error(`Unexpected quote menu selection kind: ${String(unexpected_kind)}`);
+        }
+    }
+}
+
+// Shared with the keyboard shortcut, so both are offered in the same cases.
+export function can_toggle_link_previews(message: Message): boolean {
+    if (message.locally_echoed || page_params.is_spectator) {
+        return false;
+    }
+
+    // A collapsed message, and one hidden for a muted sender, show no
+    // body at all, so there is nothing to toggle until it is shown.
+    assert(message_lists.current !== undefined);
+    const message_container = message_lists.current.view.message_containers.get(message.id);
+    if (message.collapsed || message_container === undefined || message_container.is_hidden) {
+        return false;
+    }
+
+    // Parsing the message's HTML is the expensive part, so check it last.
+    return message_parser.message_has_link_preview(message.content);
+}
+
+export function get_actions_popover_content_context(
+    message_id: number,
+    quote_menu_selection: QuoteMenuSelection,
+): ActionPopoverContext {
     assert(message_lists.current !== undefined);
     const $message_row = message_lists.current.get_row(message_id);
     const message = message_lists.current.get(message_id);
@@ -211,7 +272,17 @@ export function get_actions_popover_content_context(message_id: number): ActionP
         should_display_uncollapse = message.collapsed || message_condensed;
     }
 
+    const can_toggle_previews = can_toggle_link_previews(message);
+    const should_display_hide_link_previews = can_toggle_previews && !message.hide_link_previews;
+    const should_display_show_link_previews = can_toggle_previews && message.hide_link_previews;
+
     const should_display_quote_message = not_spectator;
+    const {quote_message_menu_item, forward_message_menu_item} = get_quote_menu_labels(
+        quote_menu_selection.kind,
+    );
+    // Showing a hotkey next to a menu item that does something else would be
+    // a lie, so we drop the hint rather than the item.
+    const show_quote_and_forward_hotkey_hints = quote_menu_selection.hotkeys_agree;
 
     const conversation_time_url = hash_util.by_conversation_and_time_url(message);
 
@@ -255,11 +326,16 @@ export function get_actions_popover_content_context(message_id: number): ActionP
         view_source_menu_item,
         should_display_collapse,
         should_display_uncollapse,
+        should_display_hide_link_previews,
+        should_display_show_link_previews,
         should_display_add_reaction_option,
         conversation_time_url,
         should_display_delete_option,
         should_display_read_receipts_option,
         should_display_quote_message,
+        quote_message_menu_item,
+        forward_message_menu_item,
+        show_quote_and_forward_hotkey_hints,
         should_display_message_report_option: should_display_message_report_option(),
     };
 }
@@ -288,6 +364,9 @@ export function get_topic_popover_content_context({
     const all_visibility_policies = user_topics.all_visibility_policies;
     const is_spectator = page_params.is_spectator;
     const is_topic_empty = is_topic_definitely_empty(stream_id, topic_name);
+    const has_topic_links =
+        message_store.topic_links_from_narrow(stream_id, topic_name).length > 0 ||
+        message_store.topic_links_to_narrow(stream_id, topic_name).length > 0;
     return {
         stream_name: sub.name,
         stream_id: sub.stream_id,
@@ -310,6 +389,7 @@ export function get_topic_popover_content_context({
         all_visibility_policies,
         can_summarize_topics: settings_data.user_can_summarize_topics(),
         show_ai_features: !user_settings.hide_ai_features,
+        has_topic_links,
     };
 }
 

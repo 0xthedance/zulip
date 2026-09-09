@@ -347,13 +347,15 @@ export function hide_message_edit_spinner($row: JQuery): void {
     $row.find(".message_edit_cancel").removeClass("message-edit-button-disabled");
 }
 
-export function show_message_edit_spinner($row: JQuery): void {
+export function show_message_edit_spinner($row: JQuery, keep_cancel_enabled = false): void {
     // Always show the white spinner like we
     // do for send button in compose box.
     loading.show_button_spinner($row.find(".loader"), true);
     $row.find(".message_edit_save span").addClass("showing-button-spinner");
     $row.find(".message_edit_save").addClass("message-edit-button-disabled");
-    $row.find(".message_edit_cancel").addClass("message-edit-button-disabled");
+    if (!keep_cancel_enabled) {
+        $row.find(".message_edit_cancel").addClass("message-edit-button-disabled");
+    }
 }
 
 export function show_topic_edit_spinner($row: JQuery): void {
@@ -782,6 +784,16 @@ function start_edit_maintaining_scroll($row: JQuery, content: string): void {
     }
 }
 
+function setup_edit_form_widgets($row: JQuery): void {
+    const row_id = rows.id($row);
+    upload.setup_upload(upload.edit_config(row_id));
+    // Setup dropdown for saved snippets button in the current
+    // message edit control buttons tray.
+    saved_snippets_ui.setup_saved_snippets_dropdown_widget(
+        `.saved-snippets-message-edit-widget[data-message-id="${CSS.escape(row_id.toString())}"]`,
+    );
+}
+
 function start_edit_with_content(
     $row: JQuery,
     content: string,
@@ -791,13 +803,7 @@ function start_edit_with_content(
     if (edit_box_open_callback) {
         edit_box_open_callback();
     }
-    const row_id = rows.id($row);
-    upload.setup_upload(upload.edit_config(row_id));
-    // Setup dropdown for saved snippets button in the current
-    // message edit control buttons tray.
-    saved_snippets_ui.setup_saved_snippets_dropdown_widget(
-        `.saved-snippets-message-edit-widget[data-message-id="${CSS.escape(row_id.toString())}"]`,
-    );
+    setup_edit_form_widgets($row);
 }
 
 export function start($row: JQuery, edit_box_open_callback?: () => void): void {
@@ -1142,7 +1148,10 @@ export function end_message_row_edit($row: JQuery): void {
         message_lists.current.hide_edit_message($row);
         compose_call_session_manager.abandon_session(message.id.toString());
     }
-    if ($row.find(".could-be-condensed").length > 0) {
+
+    if (message?.collapsed) {
+        condense.show_message_expander($row);
+    } else if ($row.find(".could-be-condensed").length > 0) {
         if ($row.find(".condensed").length > 0) {
             condense.show_message_expander($row);
         } else {
@@ -1498,6 +1507,11 @@ export function maybe_show_edit($row: JQuery, id: number): void {
     if (currently_editing_messages.has(id)) {
         const $message_edit_content = currently_editing_messages.get(id);
         edit_message($row, $message_edit_content?.val() ?? "");
+        setup_edit_form_widgets($row);
+        if ($row.hasClass("show_preview")) {
+            show_preview_area($row);
+            $row.removeClass("show_preview");
+        }
     }
 }
 

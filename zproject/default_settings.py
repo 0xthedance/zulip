@@ -133,6 +133,12 @@ VIDEO_ZOOM_CLIENT_SECRET = get_secret("video_zoom_client_secret")
 VIDEO_WEBEX_API_URL: str = "https://webexapis.com/v1/"
 VIDEO_WEBEX_CLIENT_ID = get_secret("video_webex_client_id", development_only=True)
 VIDEO_WEBEX_CLIENT_SECRET = get_secret("video_webex_client_secret")
+VIDEO_GOOGLE_MEET_OAUTH_URL: str = "https://accounts.google.com/o/oauth2/v2/auth"
+VIDEO_GOOGLE_MEET_TOKEN_URL: str = "https://oauth2.googleapis.com/token"
+VIDEO_GOOGLE_MEET_API_URL: str = "https://meet.googleapis.com/v2/spaces"
+VIDEO_GOOGLE_MEET_CLIENT_ID = get_secret("video_google_meet_client_id", development_only=True)
+VIDEO_GOOGLE_MEET_CLIENT_SECRET = get_secret("video_google_meet_client_secret")
+VIDEO_GOOGLE_MEET_APP_INTERNAL: bool = True
 
 # Email gateway
 EMAIL_GATEWAY_PATTERN = ""
@@ -275,7 +281,7 @@ ZULIP_SERVICE_SECURITY_ALERTS = False
 PUSH_NOTIFICATION_BOUNCER_URL: str | None = None
 # Keep this default True, so that legacy deployments that configured PUSH_NOTIFICATION_BOUNCER_URL
 # without overriding SUBMIT_USAGE_STATISTICS get the original behavior. If a server configures
-# the modern ZULIP_SERVICES setting, all this will be ignored.
+# the modern ZULIP_SERVICE_* settings, all this will be ignored.
 SUBMIT_USAGE_STATISTICS = True
 
 PROMOTE_SPONSORING_ZULIP = True

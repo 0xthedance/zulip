@@ -247,6 +247,11 @@ exports.fixtures = {
         topic: "topic1",
     },
 
+    has_google_meet_token: {
+        type: "has_google_meet_token",
+        value: true,
+    },
+
     has_webex_token: {
         type: "has_webex_token",
         value: true,
@@ -945,6 +950,42 @@ exports.fixtures = {
         message_type: "direct",
         sender: typing_person1,
         recipients: [typing_person2],
+    },
+
+    update_message_flags__collapsed_add: {
+        type: "update_message_flags",
+        op: "add",
+        operation: "add",
+        flag: "collapsed",
+        messages: [exports.test_message.id],
+        all: false,
+    },
+
+    update_message_flags__collapsed_remove: {
+        type: "update_message_flags",
+        op: "remove",
+        operation: "remove",
+        flag: "collapsed",
+        messages: [exports.test_message.id],
+        all: false,
+    },
+
+    update_message_flags__hide_link_previews_add: {
+        type: "update_message_flags",
+        op: "add",
+        operation: "add",
+        flag: "hide_link_previews",
+        messages: [exports.test_message.id],
+        all: false,
+    },
+
+    update_message_flags__hide_link_previews_remove: {
+        type: "update_message_flags",
+        op: "remove",
+        operation: "remove",
+        flag: "hide_link_previews",
+        messages: [exports.test_message.id],
+        all: false,
     },
 
     update_message_flags__read: {

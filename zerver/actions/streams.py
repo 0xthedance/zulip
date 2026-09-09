@@ -59,8 +59,7 @@ from zerver.lib.user_groups import (
 )
 from zerver.lib.users import (
     all_users_accessible_by_everyone_in_realm,
-    get_subscribers_of_target_user_subscriptions,
-    get_users_involved_in_dms_with_target_users,
+    bulk_get_subscribers_of_target_user_subscriptions,
 )
 from zerver.lib.utils import assert_is_not_none
 from zerver.models import (
@@ -424,7 +423,7 @@ def send_subscription_add_events(
     for sub_info in sub_info_list:
         stream = sub_info.stream
         if stream.id not in stream_subscribers_dict:
-            subscribers = list(subscriber_dict[stream.id])
+            subscribers = sorted(subscriber_dict[stream.id])
             stream_subscribers_dict[stream.id] = subscribers
 
     streams = [sub_info.stream for sub_info in sub_info_list]
@@ -701,8 +700,6 @@ def send_user_creation_events_on_adding_subscriptions(
     altered_users = list(altered_streams_dict.keys())
     non_guest_user_ids = active_non_guest_user_ids(realm.id)
 
-    users_involved_in_dms = get_users_involved_in_dms_with_target_users(altered_users, realm)
-
     altered_stream_ids = altered_user_dict.keys()
     subscribers_dict = get_users_for_streams(set(altered_stream_ids))
 
@@ -722,10 +719,7 @@ def send_user_creation_events_on_adding_subscriptions(
             subscribers_in_altered_streams |= subscriber_ids_dict[stream_id]
 
         users_already_with_access_to_altered_user = (
-            set(non_guest_user_ids)
-            | subscribers_of_altered_user_subscriptions[user.id]
-            | users_involved_in_dms[user.id]
-            | {user.id}
+            set(non_guest_user_ids) | subscribers_of_altered_user_subscriptions[user.id] | {user.id}
         )
 
         users_to_receive_creation_event = (
@@ -737,11 +731,9 @@ def send_user_creation_events_on_adding_subscriptions(
         if user.is_guest:
             # If the altered user is a guest, then the user may receive
             # user creation events for subscribers of the new stream.
-            users_already_accessible_to_altered_user = (
-                subscribers_of_altered_user_subscriptions[user.id]
-                | users_involved_in_dms[user.id]
-                | {user.id}
-            )
+            users_already_accessible_to_altered_user = subscribers_of_altered_user_subscriptions[
+                user.id
+            ] | {user.id}
 
             new_accessible_user_ids = (
                 subscribers_in_altered_streams - users_already_accessible_to_altered_user
@@ -860,8 +852,8 @@ def bulk_add_subscriptions(
 
     if not all_users_accessible_by_everyone_in_realm(realm):
         altered_users = list(altered_streams_dict.keys())
-        subscribers_of_altered_user_subscriptions = get_subscribers_of_target_user_subscriptions(
-            altered_users
+        subscribers_of_altered_user_subscriptions = (
+            bulk_get_subscribers_of_target_user_subscriptions(altered_users)
         )
 
     bulk_add_subs_to_db_with_logging(
@@ -1027,8 +1019,7 @@ def send_user_remove_events_on_removing_subscriptions(
     for stream_ids in altered_user_dict.values():
         altered_stream_ids |= stream_ids
 
-    users_involved_in_dms = get_users_involved_in_dms_with_target_users(altered_users, realm)
-    subscribers_of_altered_user_subscriptions = get_subscribers_of_target_user_subscriptions(
+    subscribers_of_altered_user_subscriptions = bulk_get_subscribers_of_target_user_subscriptions(
         altered_users
     )
 
@@ -1042,10 +1033,7 @@ def send_user_remove_events_on_removing_subscriptions(
             users_in_unsubscribed_streams |= subscribers_dict[stream_id]
 
         users_who_can_access_altered_user = (
-            set(non_guest_user_ids)
-            | subscribers_of_altered_user_subscriptions[user.id]
-            | users_involved_in_dms[user.id]
-            | {user.id}
+            set(non_guest_user_ids) | subscribers_of_altered_user_subscriptions[user.id] | {user.id}
         )
 
         subscribers_without_access_to_altered_user = (
@@ -1064,9 +1052,7 @@ def send_user_remove_events_on_removing_subscriptions(
 
         if user.is_guest:
             users_inaccessible_to_altered_user = users_in_unsubscribed_streams - (
-                subscribers_of_altered_user_subscriptions[user.id]
-                | users_involved_in_dms[user.id]
-                | {user.id}
+                subscribers_of_altered_user_subscriptions[user.id] | {user.id}
             )
 
             for user_id in users_inaccessible_to_altered_user:

@@ -17,6 +17,7 @@ import * as compose_pm_pill from "./compose_pm_pill.ts";
 import * as compose_recipient from "./compose_recipient.ts";
 import * as compose_state from "./compose_state.ts";
 import * as compose_validate from "./compose_validate.ts";
+import * as condense from "./condense.ts";
 import {electron_bridge} from "./electron_bridge.ts";
 import * as emoji from "./emoji.ts";
 import * as emoji_frequency from "./emoji_frequency.ts";
@@ -222,10 +223,10 @@ export function dispatch_normal_event(event) {
             break;
         }
 
-        case "has_zoom_token":
-            current_user.has_zoom_token = event.value;
+        case "has_google_meet_token":
+            current_user.has_google_meet_token = event.value;
             if (event.value) {
-                compose_call_session_manager.run_and_clear_callbacks_for_provider("zoom");
+                compose_call_session_manager.run_and_clear_callbacks_for_provider("google_meet");
             }
             break;
 
@@ -233,6 +234,13 @@ export function dispatch_normal_event(event) {
             current_user.has_webex_token = event.value;
             if (event.value) {
                 compose_call_session_manager.run_and_clear_callbacks_for_provider("webex");
+            }
+            break;
+
+        case "has_zoom_token":
+            current_user.has_zoom_token = event.value;
+            if (event.value) {
+                compose_call_session_manager.run_and_clear_callbacks_for_provider("zoom");
             }
             break;
 
@@ -1184,6 +1192,35 @@ export function dispatch_normal_event(event) {
                         new_value,
                     );
                     break;
+                case "collapsed":
+                    for (const message_id of event.messages) {
+                        const message = message_store.get(message_id);
+                        if (message === undefined) {
+                            // If we don't have the message locally, do
+                            // nothing; if later we fetch it, it'll come
+                            // with the correct `collapsed` state.
+                            continue;
+                        }
+                        message.collapsed = new_value;
+                        condense.update_collapsed_view(message);
+                    }
+                    break;
+                case "hide_link_previews": {
+                    const updated_message_ids = [];
+                    for (const message_id of event.messages) {
+                        const message = message_store.get(message_id);
+                        if (message === undefined) {
+                            continue;
+                        }
+                        message.hide_link_previews = new_value;
+                        updated_message_ids.push(message_id);
+                    }
+                    message_live_update.update_hide_link_previews_view(
+                        updated_message_ids,
+                        new_value,
+                    );
+                    break;
+                }
             }
             break;
         }

@@ -12,7 +12,11 @@ import * as input_pill from "./input_pill.ts";
 import type {InputPill, InputPillContainer} from "./input_pill.ts";
 import * as people from "./people.ts";
 import type {User} from "./people.ts";
-import {type Suggestion, search_term_description_html} from "./search_suggestion.ts";
+import {
+    type Suggestion,
+    search_term_description_html,
+    search_text_matches_operator,
+} from "./search_suggestion.ts";
 import type {NarrowCanonicalTerm, NarrowTermSuggestion} from "./state_data.ts";
 import * as stream_data from "./stream_data.ts";
 import type {StreamSubscription} from "./sub_store.ts";
@@ -168,7 +172,14 @@ function maybe_generate_combined_channel_topic_pill(
 
     const sign = search_pill.negated ? "-" : "";
     const channel_operand = search_terms[index - 1]!.operand;
-    const sub = stream_data.get_valid_sub_by_id_string(channel_operand);
+    const sub = stream_data.get_sub_by_id_string(channel_operand);
+    // Pill terms are only validated at pill creation, so a suggestion
+    // can reference a channel this client has no data for, e.g. a
+    // channel deleted while a pill referenced it. Fall back to
+    // separate pills, where the channel term is rendered as invalid.
+    if (sub === undefined) {
+        return undefined;
+    }
     return {
         ...search_pill,
         sign,
@@ -179,8 +190,19 @@ function maybe_generate_combined_channel_topic_pill(
     };
 }
 
+// Whether the user is still typing out a `topic` operator, e.g. `to`
+// or `-topi`, as opposed to a topic operand like `topic:gen` or a bare
+// search term like `general`.
+function is_typing_topic_operator(text_query: string): boolean {
+    const last_term = Filter.parse(text_query).at(-1);
+    return (
+        last_term?.operator === "search" && search_text_matches_operator(last_term.operand, "topic")
+    );
+}
+
 export function generate_pills_html(suggestion: Suggestion, text_query: string): string {
     const search_terms = Filter.parse(suggestion);
+    const typing_topic_operator = is_typing_topic_operator(text_query);
 
     // This is used to track the index of the channel pill data
     // for a channel that is combined with the subsequent topic pill
@@ -214,50 +236,21 @@ export function generate_pills_html(suggestion: Suggestion, text_query: string):
             case "sender":
                 return search_user_pill_data_from_term(narrow_term);
             case "topic": {
-                if (search_pill.operand === "") {
-                    // There are three variants of this suggestion state:
-                    //
-                    // (1) This is an already formed pill, i.e. not in the text input
-                    // (`text_query`), or is not the last term in the text input, and
-                    //  therefore the empty operand represents "general chat".
-                    //
-                    // (2) The user has selected a topic operator, and and thus has
-                    // exactly `topic:` or `-topic:` written out, and it's appropriate
-                    // to suggest the "general chat" operand.
-                    //
-                    // (3) We're suggesting `topic` as a potential operator to add, say
-                    // if the user has typed `-to` so far. For that case, we want to
-                    // suggest adding a topic operator, but the user hasn't done anything
-                    // that would suggest we should further complete "general chat" as an
-                    // operand for that topic operator.
-                    if (
-                        // case 1
-                        text_query === "" ||
-                        index < search_terms.length - 1 ||
-                        // case 2
-                        text_query.trimEnd().endsWith("topic:")
-                    ) {
-                        // We want to show a combined pill for the case
-                        // where the preceding operator is a `channel`.
-                        const combined_channel_topic_pill_render_data =
-                            maybe_generate_combined_channel_topic_pill(
-                                index,
-                                search_terms,
-                                search_pill,
-                            );
-                        if (combined_channel_topic_pill_render_data) {
-                            redundant_channel_pill_index = index - 1;
-                            return combined_channel_topic_pill_render_data;
-                        }
-
-                        return {
-                            ...search_pill,
-                            is_empty_string_topic: true,
-                            sign: search_pill.negated ? "-" : "",
-                            topic_display_name: util.get_final_topic_display_name(""),
-                        };
-                    }
-                    // case 3
+                // An empty operand represents "general chat", whether
+                // in an already formed pill or in a suggestion matching
+                // the text the user is typing, like `topic:gen`.
+                //
+                // The exception is when we're suggesting `topic` as a
+                // potential operator to add, say if the user has typed
+                // `-to` so far. For that case, we want to suggest adding
+                // a topic operator, but the user hasn't done anything
+                // that would suggest we should further complete "general
+                // chat" as an operand for that topic operator.
+                if (
+                    search_pill.operand === "" &&
+                    index === search_terms.length - 1 &&
+                    typing_topic_operator
+                ) {
                     return {
                         ...search_pill,
                         is_empty_string_topic: true,
@@ -265,13 +258,22 @@ export function generate_pills_html(suggestion: Suggestion, text_query: string):
                     };
                 }
 
-                // Try generating a combined channel topic pill for
-                // non-empty operands.
+                // We want to show a combined pill for the case
+                // where the preceding operator is a `channel`.
                 const combined_channel_topic_pill_render_data =
                     maybe_generate_combined_channel_topic_pill(index, search_terms, search_pill);
                 if (combined_channel_topic_pill_render_data) {
                     redundant_channel_pill_index = index - 1;
                     return combined_channel_topic_pill_render_data;
+                }
+
+                if (search_pill.operand === "") {
+                    return {
+                        ...search_pill,
+                        is_empty_string_topic: true,
+                        sign: search_pill.negated ? "-" : "",
+                        topic_display_name: util.get_final_topic_display_name(""),
+                    };
                 }
                 break;
             }
@@ -531,7 +533,7 @@ export function set_search_bar_contents(
     }
     set_search_bar_text(search_bar_text_strings.join(" "));
     if (invalid_inputs.length > 0) {
-        $("#search_query").addClass("shake");
+        $("#search_query").addClass("input-validation-shake");
     }
 }
 

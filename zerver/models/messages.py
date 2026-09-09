@@ -228,7 +228,7 @@ class Message(AbstractMessage):
                 # is done case-insensitively
                 "realm_id",
                 Upper("subject"),
-                F("id").desc(nulls_last=True),
+                F("id").desc(),
                 name="zerver_message_realm_upper_subject",
                 condition=Q(is_channel_message=True),
             ),
@@ -240,7 +240,7 @@ class Message(AbstractMessage):
                 "realm_id",
                 "recipient_id",
                 Upper("subject"),
-                F("id").desc(nulls_last=True),
+                F("id").desc(),
                 name="zerver_message_realm_recipient_upper_subject",
                 condition=Q(is_channel_message=True),
             ),
@@ -250,14 +250,14 @@ class Message(AbstractMessage):
                 "realm_id",
                 "recipient_id",
                 "subject",
-                F("id").desc(nulls_last=True),
+                F("id").desc(),
                 name="zerver_message_realm_recipient_subject",
                 condition=Q(is_channel_message=True),
             ),
             models.Index(
                 # Only used by update_first_visible_message_id
                 "realm_id",
-                F("id").desc(nulls_last=True),
+                F("id").desc(),
                 name="zerver_message_realm_id",
             ),
             models.Index(
@@ -504,6 +504,9 @@ class AbstractUserMessage(models.Model):
         # Whether we've sent a push notification to the user's mobile
         # devices for this message that has not been revoked.
         "active_mobile_push_notification",
+        # Whether the user has hidden auto-generated link previews
+        # on this message.
+        "hide_link_previews",
     ]
     # Certain flags are used only for internal accounting within the
     # Zulip backend, and don't make sense to expose to the API.
